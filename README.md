@@ -1,4 +1,4 @@
-# Mining in Logarihtmic Space with Variable Difficulty
+# Mining in Logarithmic Space with Variable Difficulty
 
 This project implements a blockchain compression scheme that works in a variable difficulty setting.
 It interacts with the Bitcoin blockchain to generate a Non-Interactive Proof of Proof-of-Work by identifying and retaining only the relevant parts of the chain.
