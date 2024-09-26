@@ -72,7 +72,7 @@ You can generate a headers file yourself from a running `bitcoind` client, and u
 ### Example Usage
 
 ```bash
-python3 src/mls.py --load-from-headers -s 100 -b 860000 -d -k 2016 -m 208
+python3 src/mls.py --load-from-headers -s 100 -b 860000 -d -k 4032 -m 208
 ```
 
 ### Data Export
