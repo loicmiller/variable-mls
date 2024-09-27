@@ -1,4 +1,4 @@
-# Mining in Logarihtmic Space with Variable Difficulty
+# Mining in Logarithmic Space with Variable Difficulty
 
 This project implements a blockchain compression scheme that works in a variable difficulty setting.
 It interacts with the Bitcoin blockchain to generate a Non-Interactive Proof of Proof-of-Work by identifying and retaining only the relevant parts of the chain.
@@ -38,6 +38,7 @@ By default, `mls.py` will fetch block header data from a running `bitcoind` clie
 
 You can run the project with various options.
 
+```bash
 usage: mls.py [-h] [--version] [-v] [-k K_PARAMETER] [-m M_PARAMETER] [-q] [-d] [--load-from-headers]
               [--headers HEADERS_FILE_PATH] [--step] [-s STEP_SIZE] [-b HEIGHT]
 
@@ -62,6 +63,7 @@ options:
                         Size of steps for printing output to command line. (default: 1)
   -b HEIGHT, --break-at HEIGHT
                         Stop execution at specified block height. (default: None)
+```
 
 By default, `mls.py` will fetch block header data from a running `bitcoind` client, but headers have already been extracted in `headers/headers.zip` for your convenience.
 Simply extract the zip file in the same folder, and use the `--load-from-headers` option.
@@ -70,7 +72,7 @@ You can generate a headers file yourself from a running `bitcoind` client, and u
 ### Example Usage
 
 ```bash
-python3 src/mls.py --load-from-headers -s 100 -b 860000 -d -k 2016 -m 208
+python3 src/mls.py --load-from-headers -s 100 -b 860000 -d -k 4032 -m 208
 ```
 
 ### Data Export
