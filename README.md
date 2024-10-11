@@ -39,8 +39,9 @@ By default, `mls.py` will fetch block header data from a running `bitcoind` clie
 You can run the project with various options.
 
 ```bash
-usage: mls.py [-h] [--version] [-v] [-k K_PARAMETER] [-m M_PARAMETER] [-q] [-d] [--load-from-headers]
-              [--headers HEADERS_FILE_PATH] [--step] [-s STEP_SIZE] [-b HEIGHT]
+usage: mls.py [-h] [--version] [-v] [-k COMMON_PREFIX_PARAMETER] [-chi UNCOMPRESSED_PART_LENGTH]
+              [-K SECURITY_PARAMETER] [-q] [-d] [--load-from-headers] [--headers HEADERS_FILE_PATH]
+              [--step] [-s STEP_SIZE] [-b HEIGHT]
 
 Variable MLS on Bitcoin implementation
 
@@ -48,10 +49,12 @@ options:
   -h, --help            show this help message and exit
   --version             show program's version number and exit
   -v, --verbose         Increase output verbosity. (default: 0)
-  -k K_PARAMETER, --unstable-part-length K_PARAMETER
-                        Length of the unstable part (common prefix parameter, 'k'). (default: 1)
-  -m M_PARAMETER, --security-parameter M_PARAMETER
-                        Value for the security parameter ('m'). (default: 2)
+  -k COMMON_PREFIX_PARAMETER, --unstable-part-length COMMON_PREFIX_PARAMETER
+                        Length of the unstable part (common prefix parameter, 'k'). (default: 323)
+  -chi UNCOMPRESSED_PART_LENGTH, --uncompressed-part-length UNCOMPRESSED_PART_LENGTH
+                        Length of the uncompressed part ('χ'). (default: 4032)
+  -K SECURITY_PARAMETER, --security-parameter SECURITY_PARAMETER
+                        Value for the security parameter ('K'). (default: 208)
   -q, --quiet           Suppress non-essential output. (default: False)
   -d, --dump-data       Dump execution data to the data/ folder. (default: False)
   --load-from-headers   Load data from headers. (default: False)
@@ -72,7 +75,7 @@ You can generate a headers file yourself from a running `bitcoind` client, and u
 ### Example Usage
 
 ```bash
-python3 src/mls.py --load-from-headers -s 100 -b 860000 -d -k 4032 -m 208
+python3 src/mls.py --load-from-headers -s 100 -d -k 323 -chi 4032 -K 208
 ```
 
 ### Data Export

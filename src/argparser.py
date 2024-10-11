@@ -21,10 +21,12 @@ def get_parser():
     parser.add_argument("-v", "--verbose", action="count", default=0, help="Increase output verbosity.")
 
     # Mining in Logarithmic Space parameters
-    parser.add_argument("-k", "--unstable-part-length", type=int, metavar="K_PARAMETER",
-                        default=1, help="Length of the unstable part (common prefix parameter, 'k').")
-    parser.add_argument("-m", "--security-parameter", type=int, metavar="M_PARAMETER",
-                        default=2, help="Value for the security parameter ('m').")
+    parser.add_argument("-k", "--unstable-part-length", type=int, metavar="COMMON_PREFIX_PARAMETER",
+                        default=323, help="Length of the unstable part (common prefix parameter, 'k').")
+    parser.add_argument("-chi", "--uncompressed-part-length", type=int, metavar="UNCOMPRESSED_PART_LENGTH",
+                        default=4032, help="Length of the uncompressed part ('χ').")
+    parser.add_argument("-K", "--security-parameter", type=int, metavar="SECURITY_PARAMETER",
+                        default=208, help="Value for the security parameter ('K').")
 
     # Toggles
     parser.add_argument("-q", "--quiet", action="store_true",
