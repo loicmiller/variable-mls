@@ -1,7 +1,7 @@
 # variable-mls data
 headers/headers.json
 data/*.json
-!data/2024-10-11-14-23-48-data-up-to-865042-K-208-chi-4032-k-323-completed.json
+!data/2024-10-11-14-23-48-data-up-to-865042-K-208-chi-4032-k-323-completed.zip
 
 
 # Byte-compiled / optimized / DLL files
