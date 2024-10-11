@@ -18,7 +18,7 @@ The project uses the `bitcoin-cli` command to retrieve blockchain headers and pr
 - Modules:
   - `argparse` (for command-line argument parsing)
   - `json`, `requests`, `subprocess`, and other standard Python modules
-- (optional) Bitcoin Core with RPC enabled (`bitcoin-cli`)
+- (optional) Bitcoin Core with RPC enabled (`bitcoind`, `bitcoin-cli`)
 
 ## Setup
 
