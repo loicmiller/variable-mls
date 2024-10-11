@@ -8,7 +8,7 @@ The project uses the `bitcoin-cli` command to retrieve blockchain headers and pr
 
 - **Blockchain Dissolve Algorithm**: The project uses a custom scheme to compress the blockchain while maintaining security guarantees.
 - **Bitcoin Blockchain Interaction**: Retrieves block headers directly from the Bitcoin network via RPC calls.
-- **Proof Comparison**: Provides functions to compare blockchain proofs and select the most valid one.
+- **Proof Comparison**: Provides functions to compare blockchain proofs and select the best one.
 - **Argument Parsing**: Customizable runtime options for verbosity, data dumping, and step-wise execution.
 - **JSON Data Export**: Compressed blockchain data and execution results are exported as JSON for further analysis.
 
