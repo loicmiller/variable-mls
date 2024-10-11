@@ -19,34 +19,34 @@ import bitcoin
 
 def Dissolve(chain):
     """
-    Dissolves a blockchain by compressing it according to security parameters m and k.
+    Dissolves a blockchain by compressing it according to parameters K, chi and k.
 
     Args:
     - chain (list): The blockchain to dissolve, as a list of blocks.
 
     Returns:
-    - dissolved_chain, level, proof_unstable (tuple): A tuple containing the dissolved stable part of the chain (dissolved_chain), level of the proof (level), and the unstable part of the proof (proof_unstable).
+    - dissolved_chain, level, proof_remainder (tuple): A tuple containing the dissolved compressed part of the chain (dissolved_chain), level of the proof (level), and the remainder of the proof (proof_remainder).
 
     Notes:
-    - The dissolved chain (dissolved_chain) is the stable part of the proof, a dictionary where keys represent levels and values are lists of blocks at that level.
+    - The dissolved chain (dissolved_chain) is the compressed part of the proof, a dictionary where keys represent levels and values are lists of blocks at that level.
     - The level of the proof (level) is an integer.
-    - The unstable part of the proof (proof_unstable) is a list of blocks.
+    - The remainder of the proof (proof_remainder) is a list of blocks.
     """
-    proof_stable = chain[:-k]
+    proof_compressed = chain[:-k_args-chi_args]
     dissolved_chain = {}
-    if len(proof_stable) >= 2*m:
-        level = get_proof_level(proof_stable) # Get max level 'l' where there is at least 2*m blocks.
-        dissolved_chain[level] = filter_chain_by_level(proof_stable, level) # Keep all blocks at max level.
+    if len(proof_compressed) >= 2*K_args:
+        level = get_proof_level(proof_compressed) # Get max level 'l' where there is at least 2*K blocks.
+        dissolved_chain[level] = filter_chain_by_level(proof_compressed, level) # Keep all blocks at max level.
 
         for mu in range(level-1, -1, -1): # Keep relevant blocks in the compressed proof, from level-1 to level 0 included.
-            b = filter_chain_by_level(proof_stable, mu+1)[-m] # Get m-th block from the end at level directly above.
-            chain_at_level_mu = filter_chain_by_level(proof_stable, mu) # Get filtered chain at level mu.
-            dissolved_chain[mu] = chain_at_level_mu[min(len(chain_at_level_mu) - 2*m, chain_at_level_mu.index(b)):] # Keep last 2*m blocks at that level, or more if index of b is smaller.
+            b = filter_chain_by_level(proof_compressed, mu+1)[-K_args] # Get K-th block from the end at level directly above.
+            chain_at_level_mu = filter_chain_by_level(proof_compressed, mu) # Get filtered chain at level mu.
+            dissolved_chain[mu] = chain_at_level_mu[min(len(chain_at_level_mu) - 2*K_args, chain_at_level_mu.index(b)):] # Keep last 2*K blocks at that level, or more if index of b is smaller.
     else:
         level = 0
-        dissolved_chain[0] = proof_stable
-    proof_unstable = chain[-k:]
-    return (dissolved_chain, level, proof_unstable)
+        dissolved_chain[0] = proof_compressed
+    proof_remainder = chain[-k_args-chi_args:]
+    return (dissolved_chain, level, proof_remainder)
 
 
 def Compress(chain):
@@ -57,19 +57,19 @@ def Compress(chain):
     - chain (list): The blockchain to compress, as a list of blocks.
 
     Returns:
-    - proof_stable + proof_unstable (list): The compressed version of the blockchain, as a list of blocks.
+    - proof_compressed + proof_remainder (list): The compressed version of the blockchain, as a list of blocks.
 
     Notes:
     - This function compresses the blockchain using the Dissolve algorithm.
-    - The dissolved chain (dissolved_chain) is the stable part of the proof, a dictionary where keys represent levels and values are lists of blocks at that level.
-    - This function returns the compressed blockchain, as the concatenation of the stable and unstable parts of the compressed blockchain.
+    - The dissolved chain (dissolved_chain) is the compressed part of the proof, a dictionary where keys represent levels and values are lists of blocks at that level.
+    - This function returns the compressed blockchain, as the concatenation of the compressed and remainder parts of the compressed blockchain.
     """
-    (dissolved_chain, _, proof_unstable) = Dissolve(chain)
-    proof_stable = dissolved_chain_to_chain(dissolved_chain)
-    return proof_stable + proof_unstable
+    (dissolved_chain, _, proof_remainder) = Dissolve(chain)
+    proof_compressed = dissolved_chain_to_chain(dissolved_chain)
+    return proof_compressed + proof_remainder
 
 
-def MaxValid(proof, proof_prime):
+def Compare(proof, proof_prime):
     """
     Determine the best proof between two given proofs.
 
@@ -81,15 +81,15 @@ def MaxValid(proof, proof_prime):
     - proof OR proof_prime (list): The best proof between the two given proofs.
 
     Notes:
-    - This function determines the best proof between two proofs based on their validity, level, and scores after their last common ancestor.
+    - This function determines the best proof between two proofs based on their validity and difficulties after their last common ancestor.
     """
     if proof_not_valid(proof):
         return proof_prime
     if proof_not_valid(proof_prime):
         return proof
 
-    dissolved_chain, level, _ = Dissolve(proof)
-    dissolved_chain_prime, level_prime, _ = Dissolve(proof_prime)
+    dissolved_chain, level, proof_remainder = Dissolve(proof)
+    dissolved_chain_prime, level_prime, proof_remainder_prime = Dissolve(proof_prime)
 
     M = intersection(dissolved_chain, dissolved_chain_prime)
     if not M.keys(): # If there are no levels with common blocks between the proofs, return the one with the higher score.
@@ -99,7 +99,7 @@ def MaxValid(proof, proof_prime):
 
     mu = min(M.keys()) # Pick mu as the minimum level with blocks in common.
     b = M[mu][-1] # The last block in common of proof and proof_prime at level mu, i.e. their last common ancestor.
-    if chain_score(dissolved_chain_prime[mu][dissolved_chain_prime[mu].index(b):]) > chain_score(dissolved_chain[mu][dissolved_chain[mu].index(b):]):
+    if chain_score(dissolved_chain_prime[mu][dissolved_chain_prime[mu].index(b):]) + chain_score(proof_remainder_prime) > chain_score(dissolved_chain[mu][dissolved_chain[mu].index(b):]) + chain_score(proof_remainder):
         return proof_prime
     return proof
 
@@ -172,8 +172,8 @@ def get_proof_level(proof):
     - level (int): The level of the proof.
 
     Notes:
-    - This function returns the highest level of the proof where there are at least 2*m blocks.
-    - If no level satisfies the condition (at least 2*m blocks), returns 0.
+    - This function returns the highest level of the proof where there are at least 2*K blocks.
+    - If no level satisfies the condition (at least 2*K blocks), returns 0.
     """
     level_count = {} # Dictionary to store the count of blocks for each level.
 
@@ -183,9 +183,9 @@ def get_proof_level(proof):
         for i in range(block.level): # A block of level block.level is also a block of levels below, so we increment them.
             level_count[i] = level_count.get(i, 0) + 1
 
-    # Find the highest level with at least 2*m blocks, else return 0.
+    # Find the highest level with at least 2*K blocks, else return 0.
     for level in sorted(level_count.keys(), reverse=True):
-        if level_count[level] >= 2*m:
+        if level_count[level] >= 2*K_args:
             return level
     return 0
 
@@ -298,7 +298,7 @@ def print_status(proof):
         print("=============================")
         print(bcolors.WARNING + f"Added new block [{proof[-1].height:06} ({proof[-1].level:3})] - {proof[-1].block_hash:X} - {elapsed_time} ms" + bcolors.ENDC) # Display height and level of new block.
         print(bcolors.OKCYAN + f"Proof: score={chain_score(proof)}, size={len(proof)}, level={level}" + bcolors.ENDC)
-        print(bcolors.OKCYAN + "Stable part:" + bcolors.ENDC)
+        print(bcolors.OKCYAN + "Compressed part:" + bcolors.ENDC)
         for mu in range(level, -1, -1):
             level_string = ""
             for block in dissolved_chain[mu]:
@@ -338,10 +338,10 @@ def dump_data(targets, proof_sizes, proof_scores, timestamps, height, message=""
     }
     now = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     if message:
-        with open(f'data/{now}-data-up-to-{height}-m-{m}-k-{k}-{message}.json', 'w') as f:
+        with open(f'data/{now}-data-up-to-{height}-K-{K_args}-chi-{chi_args}-k-{k_args}-{message}.json', 'w') as f:
             json.dump(data, f)
     else:
-        with open(f'data/{now}-data-up-to-{height}-m-{m}-k-{k}.json', 'w') as f:
+        with open(f'data/{now}-data-up-to-{height}-K-{K_args}-chi-{chi_args}-k-{k_args}.json', 'w') as f:
             json.dump(data, f)
 
 
@@ -362,7 +362,8 @@ if __name__ == '__main__':
     - verbose (int): Increase output verbosity.
 
     - unstable_part_length (int): Length of the unstable part (common prefix parameter, 'k').
-    - security_parameter (int): Value for the security parameter ('m').
+    - uncompressed_part_length (int): Length of the uncompressed part ('χ').
+    - security_parameter (int): Value for the security parameter ('K').
     
     - quiet (bool): Toggle for suppressing non-essential output.
     - dump_data (bool): Toggle for dumping execution data to the data/ folder.
@@ -377,7 +378,8 @@ if __name__ == '__main__':
     Global variables:
     - verbose (int): Global variable storing the verbosity level.
     - k (int): The common prefix parameter, i.e. the length of the unstable part.
-    - m (int): The security parameter, i.e. half the number of blocks required for (a level of) the proof.
+    - chi (int): The length of the uncompressed part.
+    - K (int): The security parameter, i.e. half the number of blocks required for (a level of) the proof.
     - last_time_check (float): Global variable storing the timestamp of the last time check.
 
     Returns:
@@ -399,9 +401,10 @@ if __name__ == '__main__':
     last_time_check = None
 
     # Argument parser - Mining in Logarithmic Space parameters
-    global m, k
-    k = args.unstable_part_length # Global variable for k (int): The common prefix parameter, i.e. the length of the unstable part.
-    m = args.security_parameter # Global variable for m (int): The security parameter, i.e. half the number of blocks required for (a level of) the proof.
+    global K_args, chi_args, k_args
+    k_args = args.unstable_part_length # Global variable for k (int): The common prefix parameter, i.e. the length of the unstable part.
+    chi_args = args.uncompressed_part_length # Global variable for χ (int): The length of the uncompressed part.
+    K_args = args.security_parameter # Global variable for K (int): The security parameter, i.e. half the number of blocks required for (a level of) the proof.
 
     # Argument parser - Toggles
     quiet = args.quiet
@@ -418,7 +421,7 @@ if __name__ == '__main__':
 
     proof = [] # Bitcoin blockchain.
     proof_score = 0 # Proof score.
-    old_proof = [] # Keep track of old proof for MaxValid comparison.
+    old_proof = [] # Keep track of old proof for Compare comparison.
 
     headersNumber = bitcoin.load_headers(args.break_at) # Load headers.
     try:
@@ -443,9 +446,9 @@ if __name__ == '__main__':
             proof_scores += [chain_score(proof)]
             timestamps += [b.timestamp]
 
-            # Choose best proof by comparing scores with MaxValid.
-            if height > k: # Only compare after k blocks, otherwise they are equal.
-                proof = copy.deepcopy(MaxValid(old_proof, proof))
+            # Choose best proof by comparing scores with Compare.
+            if height > k_args+chi_args: # Only compare after k+χ blocks, otherwise they are equal.
+                proof = copy.deepcopy(Compare(old_proof, proof))
 
             # Since we add blocks incrementally from history, we should never choose the old proof.
             if old_proof == proof:
@@ -462,7 +465,7 @@ if __name__ == '__main__':
                     print_status(proof)
 
             
-            if height == args.break_at: #  Argument parser - Break at specified height.
+            if (args.break_at is not None) and (height > args.break_at): #  Argument parser - Break at specified height.
                 break
             if args.step: # Argument parser - Stop at each step, awaiting user input.
                 input()

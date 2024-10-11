@@ -25,15 +25,15 @@ def pull(command, params, slices):
 
 def loadAllHeaders():
     global headers
-    print('loading all headers')
+    print('Loading all headers.')
     headersNumber = cli_json(['getblockchaininfo'])['headers']
     headerHashes = pull('getblockhash', list(range(headersNumber)), 2)
     headers = pull('getblockheader', headerHashes, 4)
     headers = [{key: header[key] for key in ['hash', 'bits', 'time']} for header in headers]
-    print('all headers were loaded')
+    print('All headers loaded.')
 
 def cli(arguments):
-    return subprocess.check_output(['bitcoin-cli'] + arguments).decode('utf-8')[:-1]
+    return subprocess.check_output([f'bitcoin-cli'] + [f"-rpcuser={config.user}"] + [f"-rpcpassword={config.passphrase}"] + arguments).decode('utf-8')[:-1]
 
 def cli_json(arguments):
     return json.loads(cli(arguments))
