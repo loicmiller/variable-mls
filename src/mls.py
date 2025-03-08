@@ -310,7 +310,7 @@ def print_status(proof):
 
     last_time_check = current_time # Update last_time_check.
 
-def dump_data(targets, proof_sizes, proof_scores, timestamps, height, message=""):
+def dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_latencies, height, message=""):
     """
     Dump data to a JSON file with a filename based on timestamp, height, and an optional message.
 
@@ -319,6 +319,7 @@ def dump_data(targets, proof_sizes, proof_scores, timestamps, height, message=""
     - proof_sizes (list): List of sizes of the compressed proofs in number of blocks.
     - proof_scores (list): List of total scores of the compressed proofs.
     - timestamps (list): List of timestamps associated with the blocks.
+    - proof_generation_latencies (list): List of proof generation latencies.
     - height (list): List of block heights.
     - message (str, optional): An optional message to include in the filename.
 
@@ -334,7 +335,8 @@ def dump_data(targets, proof_sizes, proof_scores, timestamps, height, message=""
         'target': targets,
         'proof_size': proof_sizes,
         'proof_score': proof_scores,
-        'timestamp': timestamps
+        'timestamp': timestamps,
+        'proof_generation_latency': proof_generation_latencies
     }
     now = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     if message:
@@ -418,6 +420,7 @@ if __name__ == '__main__':
     proof_sizes = []
     proof_scores = []
     timestamps = []
+    proof_generation_latencies = []
 
     proof = [] # Bitcoin blockchain.
     proof_score = 0 # Proof score.
@@ -440,6 +443,10 @@ if __name__ == '__main__':
             # Compress the proof.
             proof = Compress(proof)
 
+            # Measure proof generation latency for this iteration and record it.
+            proof_generation_latency = (time.time() - last_time_check) * 1_000
+            proof_generation_latencies.append(proof_generation_latency)
+
             # Data collection - Adding data for new block and new proof.
             targets += [b.target]
             proof_sizes += [len(proof)]
@@ -453,7 +460,7 @@ if __name__ == '__main__':
             # Since we add blocks incrementally from history, we should never choose the old proof.
             if old_proof == proof:
                 if args.dump_data:
-                    dump_data(targets, proof_sizes, proof_scores, timestamps, height, "equals")
+                    dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_latencies, height, "equals")
                 terminate_app(2, "Previous proof selected, this should not happen.")
 
             # Store current proof as old_proof for comparison at next iteration.
@@ -463,7 +470,6 @@ if __name__ == '__main__':
             if not quiet:
                 if height % args.print_step == 0: # Print only at each print step.
                     print_status(proof)
-
             
             if (args.break_at is not None) and (height > args.break_at): #  Argument parser - Break at specified height.
                 break
@@ -472,12 +478,12 @@ if __name__ == '__main__':
 
     except KeyboardInterrupt: # Still get data dump if execution is interrupted.
             if args.dump_data:
-                dump_data(targets, proof_sizes, proof_scores, timestamps, height, "interrupted")
+                dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_latencies, height, "interrupted")
             terminate_app(2, "Keyboard Interrupt")
 
     # Execution complete, dump data and exit.
     if args.dump_data:
-        dump_data(targets, proof_sizes, proof_scores, timestamps, height, "completed")
+        dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_latencies, height, "completed")
     print("Execution complete!")
     terminate_app(0)
 
