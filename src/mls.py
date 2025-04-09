@@ -337,7 +337,7 @@ def dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proo
     max_level = max(K_last_blocks_difficulties[-1].keys()) # Find max level.
     level_difficulty_lists = {} # Dictionary to store difficulties at each level.
     for mu in range(max_level + 1):
-        level_difficulty_lists[f"level_{mu}_difficulty"] = [d.get(mu, []) for d in K_last_blocks_difficulties]
+        level_difficulty_lists[f"level_{mu}_difficulty"] = [d.get(mu, 0) for d in K_last_blocks_difficulties]
     
     data = {
         'target': targets,
