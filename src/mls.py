@@ -310,7 +310,7 @@ def print_status(proof):
 
     last_time_check = current_time # Update last_time_check.
 
-def dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_latencies, height, message=""):
+def dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proof_generation_latencies, K_last_blocks_difficulties, height, message=""):
     """
     Dump data to a JSON file with a filename based on timestamp, height, and an optional message.
 
@@ -318,8 +318,10 @@ def dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_l
     - targets (list): List of block targets.
     - proof_sizes (list): List of sizes of the compressed proofs in number of blocks.
     - proof_scores (list): List of total scores of the compressed proofs.
+    - proof_levels (list): List of levels of the compressed proofs.
     - timestamps (list): List of timestamps associated with the blocks.
     - proof_generation_latencies (list): List of proof generation latencies.
+    - K_last_blocks_difficulties (list): List of difficulties of the last K blocks difficulties overall and at every level.
     - height (list): List of block heights.
     - message (str, optional): An optional message to include in the filename.
 
@@ -331,12 +333,20 @@ def dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_l
     data height, and an optional message. If no message is provided, the filename includes only the timestamp and height.
     The optional message indicates how the execution finished.
     """
+    # Flatten K_last_blocks_difficulties into lists.
+    max_level = max(K_last_blocks_difficulties[-1].keys()) # Find max level.
+    level_difficulty_lists = {} # Dictionary to store difficulties at each level.
+    for mu in range(max_level + 1):
+        level_difficulty_lists[f"level_{mu}_difficulty"] = [d.get(mu, []) for d in K_last_blocks_difficulties]
+    
     data = {
         'target': targets,
         'proof_size': proof_sizes,
         'proof_score': proof_scores,
+        'proof_level': proof_levels,
         'timestamp': timestamps,
-        'proof_generation_latency': proof_generation_latencies
+        'proof_generation_latency': proof_generation_latencies,
+        **level_difficulty_lists
     }
     now = datetime.now().strftime('%Y-%m-%d-%H-%M-%S')
     if message:
@@ -419,9 +429,10 @@ if __name__ == '__main__':
     targets = []
     proof_sizes = []
     proof_scores = []
+    proof_levels = []
     timestamps = []
     proof_generation_latencies = []
-    k_last_blocks_difficulties = {} # Keep track of the last k blocks difficulties overall and at every level.
+    K_last_blocks_difficulties = [] # Keep track of the last K blocks difficulties overall and at every level.
 
     proof = [] # Bitcoin blockchain.
     proof_score = 0 # Proof score.
@@ -448,17 +459,21 @@ if __name__ == '__main__':
             proof_generation_latency = (time.time() - last_time_check) * 1_000
             proof_generation_latencies.append(proof_generation_latency)
 
-            # Track last K blocks' difficulties overall and at every level.
-            dissolved_chain, level, _ = Dissolve(proof)
-            for mu in dissolved_chain:
-                last_k_blocks = dissolved_chain[mu][-K_args:] # Get last K blocks at this level
-                k_last_blocks_difficulties[mu] = [b.diff for b in last_k_blocks] # Store their difficulties
-
             # Data collection - Adding data for new block and new proof.
             targets += [b.target]
             proof_sizes += [len(proof)]
             proof_scores += [chain_score(proof)]
+            proof_levels += [get_proof_level(proof)]
             timestamps += [b.timestamp]
+
+            # Data collection - Adding data for last K blocks difficulties overall and at every level.
+            dissolved_chain, level, _ = Dissolve(proof)
+            current_k_difficulties = {}
+            for mu in dissolved_chain:
+                last_k_blocks = dissolved_chain[mu][-K_args:] # Get last K blocks at level mu
+                current_k_difficulties[mu] = chain_score(last_k_blocks) # Store their difficulties
+            #current_k_difficulties['overall'] = chain_score(proof[-K_args:]) # Store overall difficulty of last K blocks.
+            K_last_blocks_difficulties.append(copy.deepcopy(current_k_difficulties))
 
             # Choose best proof by comparing scores with Compare.
             if height > k_args+chi_args: # Only compare after k+χ blocks, otherwise they are equal.
@@ -467,7 +482,7 @@ if __name__ == '__main__':
             # Since we add blocks incrementally from history, we should never choose the old proof.
             if old_proof == proof:
                 if args.dump_data:
-                    dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_latencies, height, "equals")
+                    dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proof_generation_latencies, K_last_blocks_difficulties, height, "equals")
                 terminate_app(2, "Previous proof selected, this should not happen.")
 
             # Store current proof as old_proof for comparison at next iteration.
@@ -485,12 +500,12 @@ if __name__ == '__main__':
 
     except KeyboardInterrupt: # Still get data dump if execution is interrupted.
             if args.dump_data:
-                dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_latencies, height, "interrupted")
+                dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proof_generation_latencies, K_last_blocks_difficulties, height, "interrupted")
             terminate_app(2, "Keyboard Interrupt")
 
     # Execution complete, dump data and exit.
     if args.dump_data:
-        dump_data(targets, proof_sizes, proof_scores, timestamps, proof_generation_latencies, height, "completed")
+        dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proof_generation_latencies, K_last_blocks_difficulties, height, "completed")
     print("Execution complete!")
     terminate_app(0)
 
