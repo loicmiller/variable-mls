@@ -421,6 +421,7 @@ if __name__ == '__main__':
     proof_scores = []
     timestamps = []
     proof_generation_latencies = []
+    k_last_blocks_difficulties = {} # Keep track of the last k blocks difficulties overall and at every level.
 
     proof = [] # Bitcoin blockchain.
     proof_score = 0 # Proof score.
@@ -446,6 +447,12 @@ if __name__ == '__main__':
             # Measure proof generation latency for this iteration and record it.
             proof_generation_latency = (time.time() - last_time_check) * 1_000
             proof_generation_latencies.append(proof_generation_latency)
+
+            # Track last K blocks' difficulties overall and at every level.
+            dissolved_chain, level, _ = Dissolve(proof)
+            for mu in dissolved_chain:
+                last_k_blocks = dissolved_chain[mu][-K_args:] # Get last K blocks at this level
+                k_last_blocks_difficulties[mu] = [b.diff for b in last_k_blocks] # Store their difficulties
 
             # Data collection - Adding data for new block and new proof.
             targets += [b.target]
