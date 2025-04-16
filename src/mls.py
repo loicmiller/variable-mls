@@ -367,7 +367,7 @@ if __name__ == '__main__':
 
     This block handles the main execution flow of the program. It parses command-line arguments using the argparse module,
     loads blockchain headers using the bitcoin module, iterates through the blocks, compresses the blockchain using the Dissolve algorithm,
-    handles interrupts, and dumps data to JSON files upon completion.
+    handles interrupts, and dumps data to a JSON file upon completion.
 
     Command-line arguments:
     - version (str): Print the version of the program.
