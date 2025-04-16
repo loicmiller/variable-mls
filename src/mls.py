@@ -321,7 +321,7 @@ def dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proo
     - proof_levels (list): List of levels of the compressed proofs.
     - timestamps (list): List of timestamps associated with the blocks.
     - proof_generation_latencies (list): List of proof generation latencies.
-    - K_last_blocks_difficulties (list): List of difficulties of the last K blocks difficulties overall and at every level.
+    - K_last_blocks_difficulties (list): List of `dict`s, each mapping level to the difficulties of the last K blocks for one iteration/proof.
     - height (list): List of block heights.
     - message (str, optional): An optional message to include in the filename.
 
@@ -432,7 +432,7 @@ if __name__ == '__main__':
     proof_levels = []
     timestamps = []
     proof_generation_latencies = []
-    K_last_blocks_difficulties = [] # Keep track of the last K blocks difficulties overall and at every level.
+    K_last_blocks_difficulties = [] # List of `dict`s, each mapping level to the difficulties of the last K blocks for one iteration/proof.
 
     proof = [] # Bitcoin blockchain.
     proof_score = 0 # Proof score.
@@ -466,13 +466,12 @@ if __name__ == '__main__':
             proof_levels += [get_proof_level(proof)]
             timestamps += [b.timestamp]
 
-            # Data collection - Adding data for last K blocks difficulties overall and at every level.
+            # Data collection - Adding data for last K blocks difficulties at every level.
             dissolved_chain, level, _ = Dissolve(proof)
             current_k_difficulties = {}
             for mu in dissolved_chain:
                 last_k_blocks = dissolved_chain[mu][-K_args:] # Get last K blocks at level mu
                 current_k_difficulties[mu] = chain_score(last_k_blocks) # Store their difficulties
-            #current_k_difficulties['overall'] = chain_score(proof[-K_args:]) # Store overall difficulty of last K blocks.
             K_last_blocks_difficulties.append(copy.deepcopy(current_k_difficulties))
 
             # Choose best proof by comparing scores with Compare.
