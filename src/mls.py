@@ -310,7 +310,7 @@ def print_status(proof):
 
     last_time_check = current_time # Update last_time_check.
 
-def dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proof_generation_latencies, K_last_blocks_difficulties, height, message=""):
+def dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, block_hashes, block_levels, proof_generation_latencies, K_last_blocks_difficulties, height, message=""):
     """
     Dump data to a JSON file with a filename based on timestamp, height, and an optional message.
 
@@ -320,6 +320,8 @@ def dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proo
     - proof_scores (list): List of total scores of the compressed proofs.
     - proof_levels (list): List of levels of the compressed proofs.
     - timestamps (list): List of timestamps associated with the blocks.
+    - block_hashes (list): List of hashes associated with the blocks.
+    - block_levels (list): List of levels associated with the blocks.
     - proof_generation_latencies (list): List of proof generation latencies.
     - K_last_blocks_difficulties (list): List of `dict`s, each mapping level to the difficulties of the last K blocks for one iteration/proof.
     - height (list): List of block heights.
@@ -345,6 +347,8 @@ def dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proo
         'proof_score': proof_scores,
         'proof_level': proof_levels,
         'timestamp': timestamps,
+        'block_hash': block_hashes,
+        'block_level': block_levels,
         'proof_generation_latency': proof_generation_latencies,
         **level_difficulty_lists
     }
@@ -431,6 +435,8 @@ if __name__ == '__main__':
     proof_scores = []
     proof_levels = []
     timestamps = []
+    block_hashes = []
+    block_levels = []
     proof_generation_latencies = []
     K_last_blocks_difficulties = [] # List of `dict`s, each mapping level to the difficulties of the last K blocks for one iteration/proof.
 
@@ -465,6 +471,8 @@ if __name__ == '__main__':
             proof_scores += [chain_score(proof)]
             proof_levels += [get_proof_level(proof)]
             timestamps += [b.timestamp]
+            block_hashes += [b.block_hash]
+            block_levels += [b.level]
 
             # Data collection - Adding data for last K blocks difficulties at every level.
             dissolved_chain, level, _ = Dissolve(proof)
@@ -481,7 +489,7 @@ if __name__ == '__main__':
             # Since we add blocks incrementally from history, we should never choose the old proof.
             if old_proof == proof:
                 if args.dump_data:
-                    dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proof_generation_latencies, K_last_blocks_difficulties, height, "equals")
+                    dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, block_hashes, block_levels, proof_generation_latencies, K_last_blocks_difficulties, height, "equals")
                 terminate_app(2, "Previous proof selected, this should not happen.")
 
             # Store current proof as old_proof for comparison at next iteration.
@@ -499,12 +507,12 @@ if __name__ == '__main__':
 
     except KeyboardInterrupt: # Still get data dump if execution is interrupted.
             if args.dump_data:
-                dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proof_generation_latencies, K_last_blocks_difficulties, height, "interrupted")
+                dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, block_hashes, block_levels, proof_generation_latencies, K_last_blocks_difficulties, height, "interrupted")
             terminate_app(2, "Keyboard Interrupt")
 
     # Execution complete, dump data and exit.
     if args.dump_data:
-        dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, proof_generation_latencies, K_last_blocks_difficulties, height, "completed")
+        dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, block_hashes, block_levels, proof_generation_latencies, K_last_blocks_difficulties, height, "completed")
     print("Execution complete!")
     terminate_app(0)
 
