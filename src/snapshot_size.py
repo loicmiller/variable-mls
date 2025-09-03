@@ -13,6 +13,8 @@ import socket
 import glob
 import errno
 import sqlite3
+from http.client import CannotSendRequest
+import copy
 
 
 ###############################################################################
@@ -90,6 +92,7 @@ def robust_batch_call(rpc, batch):
 
     Returns:
     - result (list): Results of the batch RPC call.
+    - rpc (AuthServiceProxy): Updated RPC connection (in case of reconnection).
 
     Raises:
     - TimeoutError: If all retry attempts fail.
@@ -97,19 +100,25 @@ def robust_batch_call(rpc, batch):
 
     Notes:
     - Retries up to MAX_RETRIES times on common transient errors
-      (timeouts, broken pipes).
+      (timeouts, broken pipes, connection resets).
     - Waits RETRY_DELAY seconds between retries.
+    - Re-establishes the RPC connection on each retry.
     """
     for attempt in range(1, MAX_RETRIES + 1):
         try:
-            return rpc.batch_(batch)
-        except (socket.timeout, TimeoutError, BrokenPipeError) as e:
-            print(bcolors.WARNING + f"[Attempt {attempt}/{MAX_RETRIES}] RPC error: {e} — retrying in {RETRY_DELAY}s..." + bcolors.ENDC)
+            safe_batch = copy.deepcopy(batch)  # Defensive copy (avoid mutated lists after failure)
+            return rpc.batch_(safe_batch), rpc
+        except (socket.timeout, TimeoutError, BrokenPipeError, CannotSendRequest) as e:
+            print(bcolors.WARNING + f"[Attempt {attempt}/{MAX_RETRIES}] RPC error: {e} — reconnecting and retrying in {RETRY_DELAY}s..." + bcolors.ENDC)
             time.sleep(RETRY_DELAY)
+            rpc_url = f"http://{RPC_USER}:{RPC_PASSWORD}@{RPC_HOST}:{RPC_PORT}"
+            rpc = AuthServiceProxy(rpc_url, timeout=120)
         except OSError as e:
             if e.errno == errno.EPIPE:
                 print(bcolors.WARNING + f"[Attempt {attempt}/{MAX_RETRIES}] Broken pipe — retrying in {RETRY_DELAY}s..." + bcolors.ENDC)
                 time.sleep(RETRY_DELAY)
+                rpc_url = f"http://{RPC_USER}:{RPC_PASSWORD}@{RPC_HOST}:{RPC_PORT}"
+                rpc = AuthServiceProxy(rpc_url, timeout=120)
             else:
                 raise
     raise TimeoutError("RPC batch failed after maximum retries")
@@ -286,11 +295,11 @@ def main():
 
             # Fetch block hashes in batch
             blockhash_batch = [["getblockhash", h] for h in current_batch_range]
-            block_hashes = robust_batch_call(rpc, blockhash_batch)
+            block_hashes, rpc = robust_batch_call(rpc, blockhash_batch)
 
             # Fetch blocks in batch
             getblock_batch = [["getblock", bh, 2] for bh in block_hashes]
-            blocks = robust_batch_call(rpc, getblock_batch)
+            blocks, rpc = robust_batch_call(rpc, getblock_batch)
 
             # Process each block in the batch
             for height, block in zip(current_batch_range, blocks):
