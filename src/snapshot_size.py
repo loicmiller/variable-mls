@@ -77,7 +77,7 @@ def format_snapshot_info(height, utxo_count, size_bytes):
     size_kb = size_bytes / 1024
     return (
         bcolors.OKCYAN +
-        f"[Block {height:6}]  UTXOs: {utxo_count:9,}  Estimated size: {size_kb:10,.2f} KB" +
+        f"[Block {height:6}]  UTXOs: {utxo_count:9,}  Estimated size: {size_kb:10,.2f} kB" +
         bcolors.ENDC
     )
 
