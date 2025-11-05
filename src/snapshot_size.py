@@ -30,6 +30,7 @@ RPC_HOST = "127.0.0.1"       # RPC host address
 END_HEIGHT = 865043          # Final block height to process
 DATA_FOLDER = "data/"        # Folder to store snapshot and database files
 DB_FILE = "utxos.db"         # SQLite database filename
+CHECKPOINT_INTERVAL = 5_000  # Interval (blocks) for periodic checkpoints
 
 # Batch processing
 BATCH_SIZE = 100             # Number of blocks to process per batch
@@ -335,8 +336,8 @@ def main():
 
                 print(format_snapshot_info(height, count, est_size))
 
-                # Periodic data dump every 50,000 blocks
-                if height > 0 and height % 50_000 == 0:
+                # Periodic data dump every CHECKPOINT_INTERVAL blocks
+                if height > 0 and height % CHECKPOINT_INTERVAL == 0:
                     conn.commit()  # Ensure all changes are committed before backup
                     dump_data(heights, utxo_counts, estimated_sizes, height, conn=conn, message=f"checkpoint")
 
