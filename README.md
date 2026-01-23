@@ -4,20 +4,30 @@ This project implements a blockchain compression scheme that works in a variable
 It interacts with the Bitcoin blockchain to generate a Non-Interactive Proof of Proof-of-Work by identifying and retaining only the relevant parts of the chain.
 The project uses the `bitcoin-cli` command to retrieve blockchain headers and processes them for compression.
 
+In addition to real Bitcoin data, the project supports **synthetic and scripted chains**, which are useful for experimentation, visualization, and theoretical analysis.
+
 ## Features
 
 - **Blockchain Dissolve Algorithm**: The project uses a custom scheme to compress the blockchain while maintaining security guarantees.
-- **Bitcoin Blockchain Interaction**: Retrieves block headers directly from the Bitcoin network via RPC calls.
+- **Multiple Chain Generation Modes**:
+  - Bitcoin blockchain (default). Retrieves block headers directly from the Bitcoin network via RPC calls.
+  - Random chains generated from a geometric distribution.
+  - Scripted chains with explicitly specified block levels.
 - **Proof Comparison**: Provides functions to compare blockchain proofs and select the best one.
 - **Argument Parsing**: Customizable runtime options for verbosity, data dumping, and step-wise execution.
+- **Visualization Tools**: Visual representations of the full chain, compressed proof, and dissolved structure.
 - **JSON Data Export**: Compressed blockchain data and execution results are exported as JSON for further analysis.
 
 ## Requirements
 
 - Python 3.x
 - Modules:
-  - `argparse` (for command-line argument parsing)
-  - `json`, `requests`, `subprocess`, and other standard Python modules
+  - `argparse`
+  - `json`
+  - `requests`
+  - `subprocess`
+  - `math`
+  - `random`
 - (optional) Bitcoin Core with RPC enabled (`bitcoind`, `bitcoin-cli`)
 
 ## Setup
@@ -40,8 +50,9 @@ You can run the project with various options.
 
 ```bash
 usage: mls.py [-h] [--version] [-v] [-k COMMON_PREFIX_PARAMETER] [-chi UNCOMPRESSED_PART_LENGTH]
-              [-K SECURITY_PARAMETER] [-q] [-d] [--load-from-headers] [--headers HEADERS_FILE_PATH]
-              [--step] [-s STEP_SIZE] [-b HEIGHT]
+              [-K SECURITY_PARAMETER] [-q] [-d] [--dump-proof DUMP_PROOF]
+              [--chain {bitcoin,random,scripted}] [--p P] [--seed SEED] [--levels LEVELS]
+              [--load-from-headers] [--headers HEADERS_FILE_PATH] [--step] [-s STEP_SIZE] [-b HEIGHT]
 
 Variable MLS on Bitcoin implementation
 
@@ -57,6 +68,13 @@ options:
                         Value for the security parameter ('K'). (default: 208)
   -q, --quiet           Suppress non-essential output. (default: False)
   -d, --dump-data       Dump execution data to the data/ folder. (default: False)
+  --dump-proof DUMP_PROOF
+                        Dump final proof structure to a JSON file. (default: None)
+  --chain {bitcoin,random,scripted}
+                        Chain source: bitcoin (default), random, or scripted. (default: bitcoin)
+  --p P                 Geometric distribution parameter for random chain. (default: 0.5)
+  --seed SEED           Seed for random chain generation. (default: None)
+  --levels LEVELS       Comma-separated list of block levels (e.g. 0,0,3,0,1,0,5). (default: None)
   --load-from-headers   Load data from headers. (default: False)
   --headers HEADERS_FILE_PATH
                         Path to the headers file. If --load-from-headers is set and this is not
@@ -72,11 +90,51 @@ By default, `mls.py` will fetch block header data from a running `bitcoind` clie
 Simply extract the zip file in the same folder, and use the `--load-from-headers` option.
 You can generate a headers file yourself from a running `bitcoind` client, and using the `export_all_headers.py` file.
 
-### Example Usage
+### Chain Generation Modes
+
+#### 1. Bitcoin chain (default)
 
 ```bash
 python3 src/mls.py --load-from-headers -s 100 -d -k 323 -chi 4032 -K 208
 ```
+
+If `--load-from-headers` is not set, the script attempts to query a running `bitcoind` instance via RPC.
+
+#### 2. Random (geometric) chain
+
+Generates a synthetic chain where block levels follow a geometric distribution:
+$$\Pr[\mu = k] = (1 - p) \cdot p^k$$
+
+Options:
+  - `--p` : geometric parameter
+  - `--seed` : RNG seed (optional, for reproducibility)
+
+Example:
+```
+python3 src/mls.py --chain random --p 0.5 --break-at 30 -k=1 -K=2 -chi=0
+```
+
+This mode is useful for:
+  - expected-case analysis,
+  - statistical experiments,
+  - rarity and deviation studies.
+
+#### 3. Scripted chain (explicit levels)
+
+Generates a chain with explicitly specified block levels.
+
+Options:
+  - `--levels` : comma-separated list of non-negative integers
+
+Example:
+```
+python3 src/mls.py --chain scripted --levels "9,9,9,9,9,9,9,9,9,9,9,9,9" -k=1 -K=2 -chi=0
+```
+
+This mode is particularly useful for:
+- constructing adversarial or rare chains,
+- debugging,
+- generating clean illustrative figures for papers or talks.
 
 ### Data Export
 
@@ -91,4 +149,3 @@ For your convenience, a prepared data file in the `data/` directory has already 
 ## License
 
 This project is licensed under the MIT License. See the LICENSE file for more details.
-
