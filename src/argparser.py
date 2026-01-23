@@ -2,7 +2,25 @@
 # Imports
 
 import argparse
+from email import parser
 import config
+
+
+
+###############################################################################
+# Helper functions
+
+def parse_levels(levels_str: str):
+    """
+    Parse a comma-separated list of block levels.
+
+    Args:
+        levels_str (str): Comma-separated levels string.
+
+    Returns:
+        list[int]: Parsed block levels.
+    """
+    return [int(x) for x in levels_str.split(",") if x.strip()]
 
 
 
@@ -33,10 +51,19 @@ def get_parser():
                         help="Suppress non-essential output.")
     parser.add_argument("-d", "--dump-data", action="store_true",
                         help="Dump execution data to the data/ folder.")
+    parser.add_argument("--dump-proof", type=str, default=None, help="Dump final proof structure to a JSON file.")
+
+    # Chain generation
+    parser.add_argument("--chain", type=str, choices=["bitcoin", "random", "scripted"],
+                        default="bitcoin", help="Chain source: bitcoin (default), random, or scripted.")
+    parser.add_argument("--p", type=float, default=0.5, help="Geometric distribution parameter for random chain.")
+    parser.add_argument("--seed", type=int, default=None, help="Seed for random chain generation.")
+    parser.add_argument("--levels", type=parse_levels, default=None, help="Comma-separated list of block levels (e.g. 0,0,3,0,1,0,5).")
 
     # Bitcoin block loading
     parser.add_argument("--load-from-headers", action="store_true", help="Load data from headers.")
-    parser.add_argument("--headers", type=str, metavar="HEADERS_FILE_PATH", default=config.HEADERS_FILE_PATH, help="Path to the headers file. If --load-from-headers is set and this is not provided, default path from config will be used.")
+    parser.add_argument("--headers", type=str, metavar="HEADERS_FILE_PATH", default=config.HEADERS_FILE_PATH,
+                        help="Path to the headers file. If --load-from-headers is set and this is not provided, default path from config will be used.")
 
     # Execution
     parser.add_argument("--step", action="store_true", help="Stop at each step, awaiting user input.")

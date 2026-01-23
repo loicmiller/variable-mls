@@ -11,6 +11,9 @@ import copy
 from argparser import get_parser
 import config
 import bitcoin
+from chain_generator import (RandomLevelChainGenerator, ScriptedLevelChainGenerator)
+from visualize_proof import visualize_proof
+from rarity import rarity_report, print_rarity_report
 
 
 
@@ -293,7 +296,7 @@ def print_status(proof):
 
     # Output status to command line.
     if verbose == 0:
-        print(bcolors.WARNING + f"Proof compressed with new block [{proof[-1].height:06} ({proof[-1].level:3})] - {proof[-1].block_hash:56X} - {elapsed_time} ms" + bcolors.ENDC) # Display height and level of new block.
+        print(bcolors.WARNING + f"Proof compressed with new block [{proof[-1].height:06} ({proof[-1].level:3})] - {f'{proof[-1].block_hash:064X}'[:20]} - {elapsed_time} ms" + bcolors.ENDC) # Display height and level of new block.
     elif verbose >= 1:
         print("=============================")
         print(bcolors.WARNING + f"Added new block [{proof[-1].height:06} ({proof[-1].level:3})] - {proof[-1].block_hash:X} - {elapsed_time} ms" + bcolors.ENDC) # Display height and level of new block.
@@ -387,6 +390,11 @@ if __name__ == '__main__':
     - load_from_headers (bool): Toggle for loading blockchain headers.
     - headers (str): Path to the blockchain headers file.
 
+    - chain (str): Type of blockchain to use ('bitcoin', 'random', or 'scripted').
+    - p (float): Geometric distribution parameter for random chain.
+    - seed (int): Seed for random chain generation.
+    - levels (list): Comma-separated list of block levels (e.g. 0,0,3,0,1,0,5).
+
     - step (bool): Toggle for executing the algorithm step by step, waiting for user input at each iteration.
     - print_step (int): Size of steps for printing output to command line.
     - break_at (int): Optional argument to specify the block height at which execution should stop.
@@ -444,19 +452,54 @@ if __name__ == '__main__':
     proof_score = 0 # Proof score.
     old_proof = [] # Keep track of old proof for Compare comparison.
 
-    headersNumber = bitcoin.load_headers(args.break_at) # Load headers.
+    full_chain = [] # Keep track of full chain for visualization.
+
+    # Chain initialization and length
+    if args.chain == "bitcoin":
+        headersNumber = bitcoin.load_headers(args.break_at)
+    else:
+        # Synthetic chains: define chain length
+        if args.chain == "random":
+            if args.break_at is None:
+                terminate_app(2, "--break-at is required for random chain")
+            headersNumber = args.break_at
+        elif args.chain == "scripted":
+            if args.levels is None:
+                terminate_app(2, "--levels is required for scripted chain")
+            headersNumber = len(args.levels)
+        else:
+            terminate_app(2, "Unknown chain type")
+
+    # Chain generator selection
+    chain = None
+    if args.chain == "random":
+        from chain_generator import RandomLevelChainGenerator
+        chain = RandomLevelChainGenerator(p=args.p, seed=args.seed)
+
+    elif args.chain == "scripted":
+        from chain_generator import ScriptedLevelChainGenerator
+        if args.levels is None:
+            terminate_app(2, "--levels is required for scripted chain")
+        chain = ScriptedLevelChainGenerator(args.levels)
+
     try:
         print("Starting compression loop...")
         for height in range(headersNumber):
             last_time_check = time.time() # Store time for print_time_since_last_time_check().
 
             # Get new block.
-            b = bitcoin.get_block_by_height(height)     
-            if height == 0: # Set level of genesis block to infinity: 256.
-                b.level = 256
+            if chain is None:
+                # Bitcoin mode (default)
+                b = bitcoin.get_block_by_height(height)
+                if height == 0:  # Set level of genesis block to infinity: 256.
+                    b.level = 256
+            else:
+                # Synthetic chain
+                b = chain.get_block_by_height(height)
 
             # Add new block to proof.
             proof.append(copy.deepcopy(b))
+            full_chain.append(copy.deepcopy(b))
 
             # Compress the proof.
             proof = Compress(proof)
@@ -513,6 +556,18 @@ if __name__ == '__main__':
     # Execution complete, dump data and exit.
     if args.dump_data:
         dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, block_hashes, block_levels, proof_generation_latencies, K_last_blocks_difficulties, height, "completed")
+
+    if not quiet:
+        dissolved_chain, _, _ = Dissolve(proof)
+
+        # Rarity report
+        levels = [b.level for b in full_chain[1:]]  # exclude genesis
+        p = args.p
+        report = rarity_report(levels, p, trials=20_000, seed=0)
+        print_rarity_report(report)
+
+        visualize_proof(full_chain, proof, dissolved_chain, k_args, chi_args, K_args, title=f"MLS compressed proof (|proof| = {len(proof)})")
+
     print("Execution complete!")
     terminate_app(0)
 
