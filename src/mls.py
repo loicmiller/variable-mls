@@ -6,7 +6,6 @@ import json
 import time
 from datetime import datetime
 from bcolors import bcolors
-import copy
 
 from argparser import get_parser
 import config
@@ -39,12 +38,15 @@ def Dissolve(chain):
     dissolved_chain = {}
     if len(proof_compressed) >= 2*K_args:
         level = get_proof_level(proof_compressed) # Get max level 'l' where there is at least 2*K blocks.
-        dissolved_chain[level] = filter_chain_by_level(proof_compressed, level) # Keep all blocks at max level.
+        chain_at_level_above = filter_chain_by_level(proof_compressed, level) # Get filtered chain at max level.
+        dissolved_chain[level] = chain_at_level_above # Keep all blocks at max level.
 
         for mu in range(level-1, -1, -1): # Keep relevant blocks in the compressed proof, from level-1 to level 0 included.
-            b = filter_chain_by_level(proof_compressed, mu+1)[-K_args] # Get K-th block from the end at level directly above.
+            b = chain_at_level_above[-K_args] # Get K-th block from the end at level directly above.
             chain_at_level_mu = filter_chain_by_level(proof_compressed, mu) # Get filtered chain at level mu.
-            dissolved_chain[mu] = chain_at_level_mu[min(len(chain_at_level_mu) - 2*K_args, chain_at_level_mu.index(b)):] # Keep last 2*K blocks at that level, or more if index of b is smaller.
+            index_of_b = next(index for index, block in enumerate(chain_at_level_mu) if block.height == b.height) # Find b by height, unique within a chain.
+            dissolved_chain[mu] = chain_at_level_mu[min(len(chain_at_level_mu) - 2*K_args, index_of_b):] # Keep last 2*K blocks at that level, or more if index of b is smaller.
+            chain_at_level_above = chain_at_level_mu # Reuse the filtered chain for the next level down.
     else:
         level = 0
         dissolved_chain[0] = proof_compressed
@@ -72,13 +74,15 @@ def Compress(chain):
     return proof_compressed + proof_remainder
 
 
-def Compare(proof, proof_prime):
+def Compare(proof, proof_prime, dissolved=None, dissolved_prime=None):
     """
     Determine the best proof between two given proofs.
 
     Args:
     - proof (list): First blockchain proof, i.e. a list of blocks.
     - proof_prime (list): Second blockchain proof, i.e. a list of blocks.
+    - dissolved (tuple, optional): Precomputed Dissolve(proof), to avoid dissolving again.
+    - dissolved_prime (tuple, optional): Precomputed Dissolve(proof_prime), to avoid dissolving again.
 
     Returns:
     - proof OR proof_prime (list): The best proof between the two given proofs.
@@ -91,8 +95,8 @@ def Compare(proof, proof_prime):
     if proof_not_valid(proof_prime):
         return proof
 
-    dissolved_chain, level, proof_remainder = Dissolve(proof)
-    dissolved_chain_prime, level_prime, proof_remainder_prime = Dissolve(proof_prime)
+    dissolved_chain, level, proof_remainder = dissolved if dissolved is not None else Dissolve(proof)
+    dissolved_chain_prime, level_prime, proof_remainder_prime = dissolved_prime if dissolved_prime is not None else Dissolve(proof_prime)
 
     M = intersection(dissolved_chain, dissolved_chain_prime)
     if not M.keys(): # If there are no levels with common blocks between the proofs, return the one with the higher score.
@@ -178,17 +182,18 @@ def get_proof_level(proof):
     - This function returns the highest level of the proof where there are at least 2*K blocks.
     - If no level satisfies the condition (at least 2*K blocks), returns 0.
     """
-    level_count = {} # Dictionary to store the count of blocks for each level.
+    level_count = {} # Dictionary to store the count of blocks for each exact level.
 
-    # Count the number of blocks for each level.
+    # Count the number of blocks for each exact level.
     for block in proof:
         level_count[block.level] = level_count.get(block.level, 0) + 1
-        for i in range(block.level): # A block of level block.level is also a block of levels below, so we increment them.
-            level_count[i] = level_count.get(i, 0) + 1
 
-    # Find the highest level with at least 2*K blocks, else return 0.
+    # Find the highest level with at least 2*K blocks, else return 0. A block of level l
+    # is also a block of the levels below, so counts accumulate downwards.
+    cumulative_count = 0
     for level in sorted(level_count.keys(), reverse=True):
-        if level_count[level] >= 2*K_args:
+        cumulative_count += level_count[level]
+        if cumulative_count >= 2*K_args:
             return level
     return 0
 
@@ -217,10 +222,10 @@ def intersection(dissolved_chain, dissolved_chain_prime):
 
     for level in common_levels:
         dissolved_chain_blocks = dissolved_chain[level]
-        dissolved_chain_prime_blocks = dissolved_chain_prime[level]
+        dissolved_chain_prime_heights = {block_prime.height for block_prime in dissolved_chain_prime[level]}
 
         # Find blocks that exist in both proofs at the same block level.
-        intersection_blocks = [block for block in dissolved_chain_blocks if any(block.height == block_prime.height for block_prime in dissolved_chain_prime_blocks)]
+        intersection_blocks = [block for block in dissolved_chain_blocks if block.height in dissolved_chain_prime_heights]
 
         if intersection_blocks: # Do not add the level if there are no blocks in common.
             proof_intersection[level] = intersection_blocks
@@ -291,13 +296,11 @@ def print_status(proof):
         last_time_check = current_time
     elapsed_time = round((current_time - last_time_check) * 1_000, 3) # Elapsed time in ms.
 
-    # Dissolve proof
-    dissolved_chain, level, _ = Dissolve(proof)
-
     # Output status to command line.
     if verbose == 0:
         print(bcolors.WARNING + f"Proof compressed with new block [{proof[-1].height:06} ({proof[-1].level:3})] - {f'{proof[-1].block_hash:064X}'[:20]} - {elapsed_time} ms" + bcolors.ENDC) # Display height and level of new block.
     elif verbose >= 1:
+        dissolved_chain, level, _ = Dissolve(proof) # Dissolve proof for the detailed display.
         print("=============================")
         print(bcolors.WARNING + f"Added new block [{proof[-1].height:06} ({proof[-1].level:3})] - {proof[-1].block_hash:X} - {elapsed_time} ms" + bcolors.ENDC) # Display height and level of new block.
         print(bcolors.OKCYAN + f"Proof: score={chain_score(proof)}, size={len(proof)}, level={level}" + bcolors.ENDC)
@@ -451,6 +454,7 @@ if __name__ == '__main__':
     proof = [] # Bitcoin blockchain.
     proof_score = 0 # Proof score.
     old_proof = [] # Keep track of old proof for Compare comparison.
+    old_dissolved = None # Keep track of the dissolved form of old_proof for Compare.
 
     full_chain = [] # Keep track of full chain for visualization.
 
@@ -497,9 +501,9 @@ if __name__ == '__main__':
                 # Synthetic chain
                 b = chain.get_block_by_height(height)
 
-            # Add new block to proof.
-            proof.append(copy.deepcopy(b))
-            full_chain.append(copy.deepcopy(b))
+            # Add new block to proof. Blocks are never mutated after creation, so they can be shared.
+            proof.append(b)
+            full_chain.append(b)
 
             # Compress the proof.
             proof = Compress(proof)
@@ -518,16 +522,17 @@ if __name__ == '__main__':
             block_levels += [b.level]
 
             # Data collection - Adding data for last K blocks difficulties at every level.
-            dissolved_chain, level, _ = Dissolve(proof)
+            dissolved = Dissolve(proof) # Also reused by Compare below, and for old_proof at the next iteration.
+            dissolved_chain, level, _ = dissolved
             current_k_difficulties = {}
             for mu in dissolved_chain:
                 last_k_blocks = dissolved_chain[mu][-K_args:] # Get last K blocks at level mu
                 current_k_difficulties[mu] = chain_score(last_k_blocks) # Store their difficulties
-            K_last_blocks_difficulties.append(copy.deepcopy(current_k_difficulties))
+            K_last_blocks_difficulties.append(current_k_difficulties)
 
             # Choose best proof by comparing scores with Compare.
             if height > k_args+chi_args: # Only compare after k+χ blocks, otherwise they are equal.
-                proof = copy.deepcopy(Compare(old_proof, proof))
+                proof = Compare(old_proof, proof, dissolved=old_dissolved, dissolved_prime=dissolved)
 
             # Since we add blocks incrementally from history, we should never choose the old proof.
             if old_proof == proof:
@@ -535,8 +540,9 @@ if __name__ == '__main__':
                     dump_data(targets, proof_sizes, proof_scores, proof_levels, timestamps, block_hashes, block_levels, proof_generation_latencies, K_last_blocks_difficulties, height, "equals")
                 terminate_app(2, "Previous proof selected, this should not happen.")
 
-            # Store current proof as old_proof for comparison at next iteration.
-            old_proof = copy.deepcopy(proof)
+            # Store current proof and its dissolved form for comparison at next iteration.
+            old_proof = list(proof) # Shallow copy: Compress rebuilds the proof list, and blocks are never mutated.
+            old_dissolved = dissolved
 
             # Print status.
             if not quiet:
