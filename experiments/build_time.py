@@ -1,9 +1,11 @@
 """Time to build a NIPoPoW from scratch, from the headers of the chain up to a given height.
 
 A new prover starts from the headers: it turns them into blocks (decoding targets, computing levels: one division
-for CCS 2025, plus the commitment check and two SHA-256 under blind mining), compresses the chain, and with the Merkle
-variant builds the tree of each block it keeps. Each step is timed separately, as the median of several runs on one
-core. Reading the headers file is timed once; it does not depend on the construction.
+for CCS 2025; under blind mining, checking that each revealed nonce opens its commitment and hashing it with the block,
+two SHA-256), compresses the chain, and with the Merkle variant builds the tree of each block it keeps. Each step is
+timed separately, as the median of several runs on one core. Reading the headers file is timed once; it does not
+depend on the construction. Bitcoin has no blind nonces: they are simulated before the timers, as a blind chain would
+carry them.
 
     taskset -c 2 python -m experiments.build_time --headers HEADERS --out results/build-time.json
 """
@@ -15,7 +17,7 @@ import time
 
 import numpy as np
 
-from vmls.chain import Block, blocks_from_headers, load_headers
+from vmls.chain import Block, blocks_from_headers, load_headers, simulated_nonce
 from vmls.nipopow import Params, compress
 from vmls.sizes import merkle_root, n_levels
 
@@ -73,12 +75,15 @@ def main() -> None:
     args = parser.parse_args()
 
     read_seconds, headers = timed(lambda: load_headers(args.headers), 1)
+    nonces = [simulated_nonce(int(header['hash'], 16)) for header in headers]  # Read from the chain, not timed.
     heights = list(range(args.step, len(headers), args.step)) + [len(headers) - 1]
     rows = []
     for blind in (False, True):
         scheme = 'draft' if blind else 'ccs'
         for height in heights:
-            blocks_seconds, chain = timed(lambda: blocks_from_headers(headers, blind=blind, stop=height + 1), args.repetitions)
+            blocks_seconds, chain = timed(lambda: blocks_from_headers(headers, blind=blind, stop=height + 1,
+                                                                      nonces=nonces if blind else None),
+                                          args.repetitions)
             for K in K_VALUES:
                 p = Params(K, args.k, args.chi)
                 compress_seconds, proof = timed(lambda: compress(chain, p), args.repetitions)
