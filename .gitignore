@@ -1,5 +1,6 @@
 # variable-mls data
 headers/headers.json
+headers/headers-up-to-*.json
 data/*
 
 # Byte-compiled / optimized / DLL files
