@@ -22,8 +22,8 @@ K_STYLE = {104: ':', 208: '-', 416: '--'}
 SCHEME_COLOUR = {'ccs': style.BLUE, 'blind': style.ORANGE}
 SCHEME_NAME = {'ccs': 'CCS 2025', 'blind': 'Blind'}
 LABEL_AT = 500_000  # Height of the direct labels.
-SECTIONS = (('D', 'D (compressed)', '#6250d6'), ('X', r'X ($\chi$ blocks)', '#1baf7a'),
-            ('Omega', r'$\Omega$ (headers only)', '#eda100'))  # Validated with the dataviz script.
+SECTIONS = (('D', 'D (sampled headers)', '#6250d6'), ('X', r'X ($\chi$ headers)', '#1baf7a'),
+            ('Omega', r'$\Omega$ ($k$ headers)', '#eda100'))  # Validated with the dataviz script.
 EPOCH = 2016  # Blocks per median on the per-block curves.
 
 
@@ -191,14 +191,14 @@ def _section_rows(sections: dict, height: int) -> dict[tuple[str, int], dict]:
 
 
 VARIANTS = {  # Field of experiments.proof_sections: file suffix, label of Omega, unit, scale.
-    'bytes': ('', r'$\Omega$ (headers only)', 'MB', 1e6),
-    'bytes_full': ('-full', r'$\Omega$ (full blocks)', 'MB', 1e6),
+    'bytes': ('', r'$\Omega$ ($k$ headers)', 'MB', 1e6),
+    'bytes_full': ('-full', r'$\Omega$ ($k$ full blocks)', 'MB', 1e6),
 }
 
 
 def _sections(field: str) -> list[tuple[str, str, str]]:
     """The parts of a proof with the labels of one variant."""
-    labels = {'D': 'D (compressed)', 'X': r'X ($\chi$ headers)', 'Omega': VARIANTS[field][1]}
+    labels = {'D': 'D (sampled headers)', 'X': r'X ($\chi$ headers)', 'Omega': VARIANTS[field][1]}
     return [(key, labels[key], colour) for key, _, colour in SECTIONS]
 
 
