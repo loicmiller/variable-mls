@@ -222,9 +222,9 @@ def sections_bars(sections: dict, out: Path) -> None:
 def sections_areas(sections: dict, out: Path, K: int = 208) -> None:
     """Draws the megabytes of each part of the proof against the height, CCS 2025 (left) and blind (right), at one K.
 
-    The two panels have their own y axis: the blind proof is about 18 times heavier.
+    Both panels share the y axis, so that the blind proof shows as the 18 times heavier one it is.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.75), layout='constrained')
+    fig, axes = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.75), layout='constrained', sharey=True)
     for ax, scheme in zip(axes, ('ccs', 'draft')):
         rows = sorted((r for r in sections['rows'] if r['scheme'] == scheme and r['K'] == K), key=lambda r: r['height'])
         heights = [r['height'] for r in rows]
@@ -234,16 +234,20 @@ def sections_areas(sections: dict, out: Path, K: int = 208) -> None:
         base = 0.0
         for (key, _, _), values in zip(SECTIONS, stack):
             mid = base + np.interp(LABEL_AT, heights, values) / 2
-            if key != 'Omega':
+            if key != 'Omega' and np.interp(LABEL_AT, heights, values) > 10:  # Only bands tall enough for a label.
                 ax.annotate(key, (LABEL_AT, mid), ha='center', va='center', fontsize=7,
                             color='white' if key == 'D' else '#1a1a19')
             base += np.interp(LABEL_AT, heights, values)
-        ax.set_ylim(bottom=0)
         ax.set_title(f"{SCHEME_NAME['ccs' if scheme == 'ccs' else 'blind']}, $K^\\star$={K}", fontsize=7)
-        ax.set_ylabel('Size (MB)')
         height_ticks(ax)
         ax.set_xlim(0, heights[-1])
         ax.set_axisbelow(True)
+    axes[0].set_ylim(bottom=0)
+    axes[0].set_ylabel('Size (MB)')
+    rows = sorted((r for r in sections['rows'] if r['scheme'] == 'ccs' and r['K'] == K), key=lambda r: r['height'])
+    total = np.interp(LABEL_AT, [r['height'] for r in rows], [sum(r['bytes'].values()) / 1e6 for r in rows])
+    axes[0].annotate(f'CCS: {total:.0f} MB', (LABEL_AT, total), xytext=(0, 2), textcoords='offset points', ha='center',
+                     va='bottom', fontsize=6.5, color=style.GRAY)
     fig.legend(*axes[0].get_legend_handles_labels(), loc='outside upper center', ncols=3, handlelength=1.2,
                columnspacing=1.0)
     fig.savefig(out / 'blind-proof-sections-height.pdf')
