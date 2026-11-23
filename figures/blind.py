@@ -23,7 +23,7 @@ SCHEME_COLOUR = {'ccs': style.BLUE, 'blind': style.ORANGE}
 SCHEME_NAME = {'ccs': 'CCS 2025', 'blind': 'Blind'}
 LABEL_AT = 500_000  # Height of the direct labels.
 SECTIONS = (('D', 'D (compressed)', '#6250d6'), ('X', r'X ($\chi$ blocks)', '#1baf7a'),
-            ('Omega', r'$\Omega$ ($k$ headers)', '#eda100'))  # Validated with the dataviz script.
+            ('Omega', r'$\Omega$ (headers only)', '#eda100'))  # Validated with the dataviz script.
 EPOCH = 2016  # Blocks per median on the per-block curves.
 
 
