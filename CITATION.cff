@@ -1,5 +1,8 @@
 cff-version: 1.2.0
-message: "If you use this software, please cite the version you used, and the paper it accompanies."
+message: >-
+  The code is by Loïc Miller. It implements and measures the construction of the paper below, by Loïc Miller,
+  Dorian Pacaud, Nathanaël Derousseaux-Lebert, Emmanuelle Anceaume and Romaric Ludinard: please cite that paper,
+  and the version of the code you used.
 title: "variable-mls: NIPoPoWs with variable mining difficulty, measured on the Bitcoin header chain"
 type: software
 authors:
