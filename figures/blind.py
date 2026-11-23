@@ -192,14 +192,13 @@ def _section_rows(sections: dict, height: int) -> dict[tuple[str, int], dict]:
 
 VARIANTS = {  # Field of experiments.proof_sections: file suffix, label of Omega, unit, scale.
     'bytes': ('', r'$\Omega$ (headers only)', 'MB', 1e6),
-    'bytes_paper': ('-paper', r'$\Omega$ (full blocks)', 'GB', 1e9),
+    'bytes_full': ('-full', r'$\Omega$ (full blocks)', 'MB', 1e6),
 }
 
 
 def _sections(field: str) -> list[tuple[str, str, str]]:
-    """The parts of a proof with the labels of one variant; under the papers' definitions X is full in CCS 2025."""
-    labels = {'D': 'D (compressed)', 'X': r'X ($\chi$ blocks)' if field == 'bytes' else r'X (full in CCS)',
-              'Omega': VARIANTS[field][1]}
+    """The parts of a proof with the labels of one variant."""
+    labels = {'D': 'D (compressed)', 'X': r'X ($\chi$ headers)', 'Omega': VARIANTS[field][1]}
     return [(key, labels[key], colour) for key, _, colour in SECTIONS]
 
 
