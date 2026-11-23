@@ -9,6 +9,8 @@ description = "NIPoPoWs with variable mining difficulty, measured on the Bitcoin
 readme = "README.md"
 requires-python = ">=3.11"
 license = { text = "MIT" }
+authors = [{ name = "Loïc Miller" }]
+keywords = ["NIPoPoW", "proof of work", "light client", "Bitcoin", "variable difficulty", "blockchain"]
 dependencies = ["numpy", "pandas", "matplotlib", "scipy", "requests"]
 
 [project.optional-dependencies]
