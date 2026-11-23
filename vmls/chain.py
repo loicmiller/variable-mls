@@ -107,19 +107,37 @@ def blind_level(ctr: bytes, y: bytes) -> int:
     return 256 - int.from_bytes(sha256(ctr + y), 'big').bit_length()
 
 
-def make_blind(block: Block) -> None:
-    """Gives a historical block the nonce and commitment blind mining would have given it, then its blind level.
+def simulated_nonce(block_hash: int) -> tuple[bytes, bytes]:
+    """The nonce and commitment blind mining would have given a historical block.
 
     Bitcoin headers have no such nonce. It is derived from the block hash, so that runs are reproducible, and the block
-    hash stands in for the proof-of-work hash y. Targets and timestamps stay the real ones.
+    hash stands in for the proof-of-work hash y. A blind chain would carry the commitment in the header and reveal the
+    nonce k blocks later: a prover reads both, so this derivation is not part of its work.
+
+    Args:
+        block_hash: The block hash.
+
+    Returns:
+        The nonce ctr and its commitment H(ctr).
+    """
+    ctr = sha256(block_hash.to_bytes(32, 'big') + b'ctr')
+    return ctr, sha256(ctr)
+
+
+def make_blind(block: Block, nonce: tuple[bytes, bytes] | None = None) -> None:
+    """Gives a block its nonce and commitment, checks that the nonce opens the commitment, then sets its blind level.
 
     Args:
         block: The block, changed in place.
+        nonce: The nonce and commitment, as read from the chain; simulated from the block hash if None.
+
+    Raises:
+        ValueError: If the nonce does not open the commitment.
     """
-    y = block.block_hash.to_bytes(32, 'big')
-    block.ctr = sha256(y + b'ctr')
-    block.commitment = sha256(block.ctr)
-    block.level = blind_level(block.ctr, y)
+    block.ctr, block.commitment = nonce if nonce is not None else simulated_nonce(block.block_hash)
+    if sha256(block.ctr) != block.commitment:
+        raise ValueError(f'block {block.height} does not open its commitment')
+    block.level = blind_level(block.ctr, block.block_hash.to_bytes(32, 'big'))
 
 
 def load_headers(path: str | Path) -> list[dict]:
@@ -140,13 +158,16 @@ def load_headers(path: str | Path) -> list[dict]:
         return json.load(f)
 
 
-def blocks_from_headers(headers: list[dict], blind: bool = False, stop: int | None = None) -> list[Block]:
-    """Builds the chain from exported headers.
+def blocks_from_headers(headers: list[dict], blind: bool = False, stop: int | None = None,
+                        nonces: list[tuple[bytes, bytes]] | None = None) -> list[Block]:
+    """Builds the chain from exported headers: the level of each block, CCS 2025 or blind, not both.
 
     Args:
         headers: The headers, one per height.
         blind: Whether levels are the blind ones.
         stop: Height to stop before, the whole chain if None.
+        nonces: Under blind mining, the nonce and commitment of each block as a blind chain would carry them
+            (simulated_nonce); derived on the fly if None.
 
     Returns:
         The blocks, the genesis block with level GENESIS_LEVEL.
@@ -155,9 +176,11 @@ def blocks_from_headers(headers: list[dict], blind: bool = False, stop: int | No
     for height, header in enumerate(headers[:stop]):
         target = bits_to_target(header['bits'])
         block_hash = int(header['hash'], 16)
-        block = Block(height, target, block_hash, int(header['time']), difficulty(target), level(block_hash, target))
+        block = Block(height, target, block_hash, int(header['time']), difficulty(target), 0)
         if blind:
-            make_blind(block)
+            make_blind(block, nonces[height] if nonces is not None else None)
+        else:
+            block.level = level(block_hash, target)
         chain.append(block)
     chain[0].level = GENESIS_LEVEL
     return chain
