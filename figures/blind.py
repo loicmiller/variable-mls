@@ -1,9 +1,10 @@
 """Figures of the blind-mining paper: proof size, construction from scratch and update per block, against CCS 2025.
 
-Figures at the width of an IEEE column, two panels each. Blue is the construction of CCS 2025, orange the blind
-one; line styles tell the values of K apart, so the figures also read in black and white. Headers are the ones the
-papers write (no Merkle root over the pointers). With --sections, two more figures split the proof into D, X and
-Omega: violet, aqua and yellow, each band also labelled.
+Figures at the width of an IEEE column. Blue is the construction of CCS 2025, orange the blind one; line styles
+tell the values of K apart, so the figures also read in black and white. Headers are the ones the papers write (no
+Merkle root over the pointers). With --sections, two more figures give the size of the proof split into D, X and
+Omega (violet, aqua and yellow, each band also labelled): headers of D and X, full blocks of Omega, as both papers
+define it when proof_sections had the block sizes, headers only otherwise (files suffixed -headers).
 
     python -m figures.blind --build results/build-time.json --runs results/blind --sections results/proof-sections.json
 """
@@ -73,39 +74,17 @@ def height_ticks(ax: plt.Axes, n: int | None = None) -> None:
 
 
 def size_figure(runs: dict, n: int, out: Path) -> None:
-    """Draws the proof size: blocks by K (left) and bytes at K = 208 against all SPV headers (right)."""
-    fig, (left, right) = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.7), layout='constrained')
+    """Draws the number of blocks in the proof against the height, by K; its size is in the figures of its parts."""
+    fig, ax = plt.subplots(figsize=(style.IEEE_COLUMN, 1.9), layout='constrained')
     for (mode, K), (arrays, _) in sorted(runs.items()):
         if mode == 'blind' or K == 208:
             medians = rolling_median(arrays['proof_size'] / 1000, EPOCH)
-            left.plot(np.arange(len(medians)) * EPOCH, medians, color=SCHEME_COLOUR[mode], linestyle=K_STYLE[K],
-                      linewidth=0.9, label=f'{SCHEME_NAME[mode]}, $K^\\star$={K}')
-    left.set_ylim(bottom=0)
-    left.set_ylabel('Blocks in the proof (thousands)')
-    height_ticks(left, n)
-
-    # Bytes at K* = 208, each line labelled at its end: the legend above is about K*.
-    lines = [('ccs', style.BLUE, '-', 'CCS 2025'), ('draft', style.ORANGE, '-', 'Blind')]
-    for scheme, colour, line, name in lines:
-        mode = 'ccs' if scheme.startswith('ccs') else 'blind'
-        if (mode, 208) not in runs:
-            continue
-        samples = runs[mode, 208][1]['bytes']
-        y = [s[scheme] / 1e6 for s in samples]
-        right.plot([s['height'] for s in samples], y, color=colour, linestyle=line, linewidth=0.9)
-        right.annotate(name, (LABEL_AT, np.interp(LABEL_AT, [s['height'] for s in samples], y)), xytext=(0, 2),
-                       textcoords='offset points', ha='center', va='bottom', fontsize=6.5)
-    heights = np.arange(n)
-    right.plot(heights, 80 * heights / 1e6, color=style.GRAY, linestyle=':', linewidth=0.9)
-    spv_at = 540_000  # The label starts here, under the line, which rises away from it.
-    right.annotate('All headers (SPV)', (spv_at, 80 * spv_at / 1e6), xytext=(0, -6), textcoords='offset points',
-                   ha='left', va='top', fontsize=6.5, color=style.GRAY)
-    right.set_yscale('log')
-    right.set_ylim(0.5, 300)
-    right.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:g}'))
-    right.set_ylabel(r'Proof size, $K^\star$=208 (MB)')
-    height_ticks(right, n)
-    fig.legend(*_merged_legend(left), loc='outside upper center', ncols=2, handlelength=2.2)
+            ax.plot(np.arange(len(medians)) * EPOCH, medians, color=SCHEME_COLOUR[mode], linestyle=K_STYLE[K],
+                    linewidth=0.9, label=f'{SCHEME_NAME[mode]}, $K^\\star$={K}')
+    ax.set_ylim(bottom=0)
+    ax.set_ylabel('Blocks in the proof (thousands)')
+    height_ticks(ax, n)
+    fig.legend(*_merged_legend(ax), loc='outside upper center', ncols=2, handlelength=2.2)
     fig.savefig(out / 'blind-proof-size.pdf')
     plt.close(fig)
 
@@ -191,8 +170,8 @@ def _section_rows(sections: dict, height: int) -> dict[tuple[str, int], dict]:
 
 
 VARIANTS = {  # Field of experiments.proof_sections: file suffix, label of Omega, unit, scale.
-    'bytes': ('', r'$\Omega$ ($k$ headers)', 'MB', 1e6),
-    'bytes_full': ('-full', r'$\Omega$ ($k$ full blocks)', 'MB', 1e6),
+    'bytes_full': ('', r'$\Omega$ ($k$ full blocks)', 'MB', 1e6),  # The proof, as both papers define it.
+    'bytes': ('-headers', r'$\Omega$ ($k$ headers)', 'MB', 1e6),  # Fallback without block sizes: headers only.
 }
 
 
@@ -312,10 +291,9 @@ def main() -> None:
     result = numbers(build, runs)
     if args.sections:
         sections = json.loads(Path(args.sections).read_text())
-        for field in VARIANTS:
-            if all(field in r for r in sections['rows']):
-                sections_bars(sections, out, field)
-                sections_areas(sections, out, field)
+        field = next(f for f in VARIANTS if all(f in r for r in sections['rows']))
+        sections_bars(sections, out, field)
+        sections_areas(sections, out, field)
         top = max(r['height'] for r in sections['rows'])
         result['sections'] = [r for r in sections['rows'] if r['height'] == top]
     (out / 'blind-numbers.json').write_text(json.dumps(result, indent=1))
