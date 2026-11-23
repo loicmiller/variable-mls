@@ -120,7 +120,7 @@ def time_figure(build: dict, runs: dict, out: Path) -> None:
         if (mode, 208) not in runs:
             continue
         arrays = runs[mode, 208][0]
-        update = (arrays['latency_base'] + arrays['latency_compress']).astype(float)
+        update = arrays['latency_base'].astype(float)  # The whole update, Compress included.
         medians = rolling_median(update / 1000, EPOCH)
         right.plot(np.arange(len(medians)) * EPOCH, medians, color=SCHEME_COLOUR[mode], linewidth=0.9)
     right.set_ylim(bottom=0)
@@ -149,7 +149,7 @@ def numbers(build: dict, runs: dict) -> dict:
                 'total_s': r['blocks_s'] + r['compress_s'], 'levels_s': r['blocks_s'],
                 'compress_s': r['compress_s'], 'proof_blocks': r['proof_blocks']}
     for (mode, K), (arrays, meta) in sorted(runs.items()):
-        update = (arrays['latency_base'] + arrays['latency_compress']).astype(float) / 1000
+        update = arrays['latency_base'].astype(float) / 1000  # The whole update, Compress included.
         verifier = {}
         for sample in meta['verifier']:
             verifier.setdefault(f"{sample['fork']}-{sample['scheme']}-{sample['path']}", []).append(sample['ms'])

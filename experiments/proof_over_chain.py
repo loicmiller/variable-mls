@@ -94,7 +94,7 @@ def run(args: argparse.Namespace) -> Path:
         proof = compress(proof, p)
         end = time.perf_counter_ns()
         latency_compress[height] = (end - compress_start) // 1_000
-        latency_base[height] = (end - start) // 1_000
+        latency_base[height] = (end - start) // 1_000  # The whole update, Compress included.
 
         # The Merkle variant hashes a short header and rebuilds the root of the pointers.
         start = time.perf_counter_ns()
