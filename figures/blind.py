@@ -20,6 +20,7 @@ K_STYLE = {104: ':', 208: '-', 416: '--'}
 SCHEME_COLOUR = {'ccs': style.BLUE, 'blind': style.ORANGE}
 SCHEME_NAME = {'ccs': 'CCS 2025', 'blind': 'Blind'}
 LABEL_AT = 500_000  # Height of the direct labels.
+EPOCH = 2016  # Blocks per median on the per-block curves.
 
 
 def load_runs(directory: Path) -> dict[tuple[str, int], tuple[dict, dict]]:
@@ -72,9 +73,9 @@ def size_figure(runs: dict, n: int, out: Path) -> None:
     fig, (left, right) = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.7), layout='constrained')
     for (mode, K), (arrays, _) in sorted(runs.items()):
         if mode == 'blind' or K == 208:
-            left.plot(np.arange(len(arrays['proof_size'])), arrays['proof_size'] / 1000, color=SCHEME_COLOUR[mode],
-                      linestyle=K_STYLE[K], linewidth=0.8, rasterized=True,
-                      label=f'{SCHEME_NAME[mode]}, $K^\\star$={K}')
+            medians = rolling_median(arrays['proof_size'] / 1000, EPOCH)
+            left.plot(np.arange(len(medians)) * EPOCH, medians, color=SCHEME_COLOUR[mode], linestyle=K_STYLE[K],
+                      linewidth=0.9, label=f'{SCHEME_NAME[mode]}, $K^\\star$={K}')
     left.set_ylim(bottom=0)
     left.set_ylabel('Blocks in the proof (thousands)')
     height_ticks(left, n)
@@ -132,7 +133,6 @@ def time_figure(build: dict, runs: dict, out: Path) -> None:
     left.set_ylabel('Build from scratch (s)')
     height_ticks(left)
 
-    window = 2016
     for mode in ('ccs', 'blind'):
         if (mode, 208) not in runs:
             continue
@@ -140,8 +140,8 @@ def time_figure(build: dict, runs: dict, out: Path) -> None:
         update = (arrays['latency_base'] + arrays['latency_compress']).astype(float)
         if mode == 'blind':
             update += arrays['latency_merkle']
-        medians = rolling_median(update / 1000, window)
-        right.plot(np.arange(len(medians)) * window, medians, color=SCHEME_COLOUR[mode], linewidth=0.9)
+        medians = rolling_median(update / 1000, EPOCH)
+        right.plot(np.arange(len(medians)) * EPOCH, medians, color=SCHEME_COLOUR[mode], linewidth=0.9)
     right.set_ylim(bottom=0)
     right.set_ylabel('Update per block (ms)')
     height_ticks(right)
@@ -169,6 +169,8 @@ def numbers(build: dict, runs: dict) -> dict:
                 'compress_s': r['compress_s'], 'merkle_s': r.get('merkle_s'), 'proof_blocks': r['proof_blocks']}
     for (mode, K), (arrays, meta) in sorted(runs.items()):
         update = (arrays['latency_base'] + arrays['latency_compress']).astype(float) / 1000
+        if mode == 'blind':
+            update += arrays['latency_merkle'] / 1000
         verifier = {}
         for sample in meta['verifier']:
             verifier.setdefault(f"{sample['fork']}-{sample['scheme']}-{sample['path']}", []).append(sample['ms'])
