@@ -91,7 +91,8 @@ RPC credentials never go in the repository: the client reads the node's cookie, 
 
 ## Citing
 
-Cite the CCS 2025 paper, and the version of this code you used; [CITATION.cff](CITATION.cff) holds both.
+The code is by Loïc Miller; the construction it implements is the work of all the authors of the CCS 2025 paper.
+Cite that paper, and the version of this code you used; [CITATION.cff](CITATION.cff) holds both.
 
 ## Security
 
