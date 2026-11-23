@@ -107,4 +107,15 @@ def test_gamma_bound_brackets(headers):
     if reference['n_headers'] != len(headers):
         pytest.skip('reference measured on another headers file')
     result = bound(Namespace(headers=HEADERS, workers=16))
-    assert json.loads(json.dumps(result)) == reference
+    assert _close(json.loads(json.dumps(result)), reference)
+
+
+def _close(a, b, rel: float = 1e-12) -> bool:
+    """Whether two JSON values are equal, floats up to a relative tolerance (parallel sums change the last bits)."""
+    if isinstance(a, dict):
+        return isinstance(b, dict) and a.keys() == b.keys() and all(_close(a[key], b[key], rel) for key in a)
+    if isinstance(a, list):
+        return isinstance(b, list) and len(a) == len(b) and all(_close(x, y, rel) for x, y in zip(a, b))
+    if isinstance(a, float) or isinstance(b, float):
+        return a == pytest.approx(b, rel=rel)
+    return a == b
