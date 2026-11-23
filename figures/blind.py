@@ -1,9 +1,11 @@
 """Figures of the blind-mining paper: proof size, construction from scratch and update per block, against CCS 2025.
 
-Two figures at the width of an IEEE column, two panels each. Blue is the construction of CCS 2025, orange the blind
-one; line styles tell the values of K apart, so the figures also read in black and white.
+Figures at the width of an IEEE column, two panels each. Blue is the construction of CCS 2025, orange the blind
+one; line styles tell the values of K apart, so the figures also read in black and white. Headers are the ones the
+papers write (no Merkle root over the pointers). With --sections, two more figures split the proof into D, X and
+Omega: violet, aqua and yellow, each band also labelled.
 
-    python -m figures.blind --build results/build-time-974505.json --runs results/blind
+    python -m figures.blind --build results/build-time.json --runs results/blind --sections results/proof-sections.json
 """
 
 import argparse
@@ -20,6 +22,8 @@ K_STYLE = {104: ':', 208: '-', 416: '--'}
 SCHEME_COLOUR = {'ccs': style.BLUE, 'blind': style.ORANGE}
 SCHEME_NAME = {'ccs': 'CCS 2025', 'blind': 'Blind'}
 LABEL_AT = 500_000  # Height of the direct labels.
+SECTIONS = (('D', 'D (compressed)', '#6250d6'), ('X', r'X ($\chi$ blocks)', '#1baf7a'),
+            ('Omega', r'$\Omega$ ($k$ headers)', '#eda100'))  # Validated with the dataviz script.
 EPOCH = 2016  # Blocks per median on the per-block curves.
 
 
@@ -81,8 +85,7 @@ def size_figure(runs: dict, n: int, out: Path) -> None:
     height_ticks(left, n)
 
     # Bytes at K* = 208, each line labelled at its end: the legend above is about K*.
-    lines = [('ccs-merkle', style.BLUE, '-', 'CCS 2025'), ('draft-merkle', style.ORANGE, '-', 'Blind'),
-             ('draft', style.ORANGE, '--', 'Blind, no Merkle')]
+    lines = [('ccs', style.BLUE, '-', 'CCS 2025'), ('draft', style.ORANGE, '-', 'Blind')]
     for scheme, colour, line, name in lines:
         mode = 'ccs' if scheme.startswith('ccs') else 'blind'
         if (mode, 208) not in runs:
@@ -123,11 +126,11 @@ def time_figure(build: dict, runs: dict, out: Path) -> None:
     for scheme, mode in (('ccs', 'ccs'), ('draft', 'blind')):
         for K in sorted(K_STYLE):
             rows = [r for r in build['rows'] if r['scheme'] == scheme and r['K'] == K]
-            if not rows or (mode == 'ccs' and K != 208):
+            if not rows or K != 208:  # Without Merkle trees, K barely changes the build time.
                 continue
-            total = [r['blocks_s'] + r['compress_s'] + r.get('merkle_s', 0) for r in rows]
+            total = [r['blocks_s'] + r['compress_s'] for r in rows]
             left.plot([r['height'] for r in rows], total, color=SCHEME_COLOUR[mode], linestyle=K_STYLE[K],
-                      linewidth=0.9, marker='o' if K == 208 else None, markersize=2,
+                      linewidth=0.9, marker='o', markersize=2,
                       label=f'{SCHEME_NAME[mode]}, $K^\\star$={K}')
     left.set_ylim(bottom=0)
     left.set_ylabel('Build from scratch (s)')
@@ -138,8 +141,6 @@ def time_figure(build: dict, runs: dict, out: Path) -> None:
             continue
         arrays = runs[mode, 208][0]
         update = (arrays['latency_base'] + arrays['latency_compress']).astype(float)
-        if mode == 'blind':
-            update += arrays['latency_merkle']
         medians = rolling_median(update / 1000, EPOCH)
         right.plot(np.arange(len(medians)) * EPOCH, medians, color=SCHEME_COLOUR[mode], linewidth=0.9)
     right.set_ylim(bottom=0)
@@ -165,12 +166,10 @@ def numbers(build: dict, runs: dict) -> dict:
     for r in build['rows']:
         if r['height'] == top:
             result['build'][f"{r['scheme']}-K{r['K']}"] = {
-                'total_s': r['blocks_s'] + r['compress_s'] + r.get('merkle_s', 0), 'levels_s': r['blocks_s'],
-                'compress_s': r['compress_s'], 'merkle_s': r.get('merkle_s'), 'proof_blocks': r['proof_blocks']}
+                'total_s': r['blocks_s'] + r['compress_s'], 'levels_s': r['blocks_s'],
+                'compress_s': r['compress_s'], 'proof_blocks': r['proof_blocks']}
     for (mode, K), (arrays, meta) in sorted(runs.items()):
         update = (arrays['latency_base'] + arrays['latency_compress']).astype(float) / 1000
-        if mode == 'blind':
-            update += arrays['latency_merkle'] / 1000
         verifier = {}
         for sample in meta['verifier']:
             verifier.setdefault(f"{sample['fork']}-{sample['scheme']}-{sample['path']}", []).append(sample['ms'])
@@ -178,11 +177,77 @@ def numbers(build: dict, runs: dict) -> dict:
             'blocks': int(arrays['proof_size'][-1]),
             'update_ms_median_last_epoch': float(np.median(update[-2016:])),
             'update_ms_p99_last_epoch': float(np.percentile(update[-2016:], 99)),
-            'merkle_ms_median_last_epoch': float(np.median(arrays['latency_merkle'][-2016:] / 1000)),
-            'bytes_last': meta['bytes'][-1] if meta['bytes'] else None,
+            'bytes_last': ({key: v for key, v in meta['bytes'][-1].items() if 'merkle' not in key}
+                           if meta['bytes'] else None),
             'verifier_ms': {key: {'n': len(v), 'median': float(np.median(v)), 'max': float(np.max(v))}
-                            for key, v in sorted(verifier.items())}}
+                            for key, v in sorted(verifier.items()) if 'merkle' not in key}}
     return result
+
+
+def _section_rows(sections: dict, height: int) -> dict[tuple[str, int], dict]:
+    """The rows of experiments.proof_sections at one height, by (scheme, K)."""
+    return {(r['scheme'], r['K']): r for r in sections['rows'] if r['height'] == height}
+
+
+def sections_bars(sections: dict, out: Path) -> None:
+    """Draws the parts of the proof at the last height: blocks (left) and megabytes (right), one bar per scheme and K."""
+    top = max(r['height'] for r in sections['rows'])
+    rows = _section_rows(sections, top)
+    bars = [(scheme, K) for scheme in ('draft', 'ccs') for K in (416, 208, 104) if (scheme, K) in rows]
+    names = [f"{SCHEME_NAME['ccs' if scheme == 'ccs' else 'blind']}, {K}" for scheme, K in bars]
+    fig, (left, right) = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.75), layout='constrained', sharey=True)
+    for ax, unit, scale in ((left, 'blocks', 1000), (right, 'bytes', 1e6)):
+        start = np.zeros(len(bars))
+        for key, label, colour in SECTIONS:
+            values = np.array([rows[bar][unit][key] / scale for bar in bars])
+            ax.barh(range(len(bars)), values, left=start, height=0.7, color=colour, edgecolor='white',
+                    linewidth=0.5, label=label)
+            start += values
+        for y, total in enumerate(start):
+            ax.annotate(f'{total:.1f}' if unit == 'blocks' else f'{total:.0f}', (total, y), xytext=(2, 0),
+                        textcoords='offset points', va='center', fontsize=6.5, color=style.GRAY)
+        ax.set_xlim(0, start.max() * 1.22)
+        ax.grid(True, axis='x')
+        ax.set_axisbelow(True)
+        ax.tick_params(axis='y', length=0)
+    left.set_yticks(range(len(bars)), names)
+    left.set_xlabel('Blocks (thousands)')
+    right.set_xlabel('Size (MB)')
+    fig.legend(*left.get_legend_handles_labels(), loc='outside upper center', ncols=3, handlelength=1.2,
+               columnspacing=1.0)
+    fig.savefig(out / 'blind-proof-sections.pdf')
+    plt.close(fig)
+
+
+def sections_areas(sections: dict, out: Path, K: int = 208) -> None:
+    """Draws the megabytes of each part of the proof against the height, CCS 2025 (left) and blind (right), at one K.
+
+    The two panels have their own y axis: the blind proof is about 18 times heavier.
+    """
+    fig, axes = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.75), layout='constrained')
+    for ax, scheme in zip(axes, ('ccs', 'draft')):
+        rows = sorted((r for r in sections['rows'] if r['scheme'] == scheme and r['K'] == K), key=lambda r: r['height'])
+        heights = [r['height'] for r in rows]
+        stack = [[r['bytes'][key] / 1e6 for r in rows] for key, _, _ in SECTIONS]
+        ax.stackplot(heights, stack, colors=[colour for _, _, colour in SECTIONS], edgecolor='white', linewidth=0.5,
+                     labels=[label for _, label, _ in SECTIONS])
+        base = 0.0
+        for (key, _, _), values in zip(SECTIONS, stack):
+            mid = base + np.interp(LABEL_AT, heights, values) / 2
+            if key != 'Omega':
+                ax.annotate(key, (LABEL_AT, mid), ha='center', va='center', fontsize=7,
+                            color='white' if key == 'D' else '#1a1a19')
+            base += np.interp(LABEL_AT, heights, values)
+        ax.set_ylim(bottom=0)
+        ax.set_title(f"{SCHEME_NAME['ccs' if scheme == 'ccs' else 'blind']}, $K^\\star$={K}", fontsize=7)
+        ax.set_ylabel('Size (MB)')
+        height_ticks(ax)
+        ax.set_xlim(0, heights[-1])
+        ax.set_axisbelow(True)
+    fig.legend(*axes[0].get_legend_handles_labels(), loc='outside upper center', ncols=3, handlelength=1.2,
+               columnspacing=1.0)
+    fig.savefig(out / 'blind-proof-sections-height.pdf')
+    plt.close(fig)
 
 
 def main() -> None:
@@ -190,6 +255,7 @@ def main() -> None:
     parser = argparse.ArgumentParser(description=__doc__.split('\n\n')[0])
     parser.add_argument('--build', required=True, help='Output of experiments.build_time.')
     parser.add_argument('--runs', required=True, help='Directory of the runs of experiments.proof_over_chain.')
+    parser.add_argument('--sections', default=None, help='Output of experiments.proof_sections (optional).')
     parser.add_argument('--out-dir', default='out/blind', help='Directory of the PDFs.')
     args = parser.parse_args()
 
@@ -201,8 +267,15 @@ def main() -> None:
     style.use()
     size_figure(runs, n, out)
     time_figure(build, runs, out)
-    (out / 'blind-numbers.json').write_text(json.dumps(numbers(build, runs), indent=1))
-    print(f'Two figures and the numbers of the text in {out}')
+    result = numbers(build, runs)
+    if args.sections:
+        sections = json.loads(Path(args.sections).read_text())
+        sections_bars(sections, out)
+        sections_areas(sections, out)
+        top = max(r['height'] for r in sections['rows'])
+        result['sections'] = [r for r in sections['rows'] if r['height'] == top]
+    (out / 'blind-numbers.json').write_text(json.dumps(result, indent=1))
+    print(f'Figures and the numbers of the text in {out}')
 
 
 if __name__ == '__main__':
