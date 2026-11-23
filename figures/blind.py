@@ -97,8 +97,9 @@ def size_figure(runs: dict, n: int, out: Path) -> None:
                        textcoords='offset points', ha='center', va='bottom', fontsize=6.5)
     heights = np.arange(n)
     right.plot(heights, 80 * heights / 1e6, color=style.GRAY, linestyle=':', linewidth=0.9)
-    right.annotate('All headers', (LABEL_AT, 80 * LABEL_AT / 1e6), xytext=(0, -2), textcoords='offset points',
-                   ha='center', va='top', fontsize=6.5, color=style.GRAY)
+    spv_at = 540_000  # The label starts here, under the line, which rises away from it.
+    right.annotate('All headers (SPV)', (spv_at, 80 * spv_at / 1e6), xytext=(0, -6), textcoords='offset points',
+                   ha='left', va='top', fontsize=6.5, color=style.GRAY)
     right.set_yscale('log')
     right.set_ylim(0.5, 300)
     right.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:g}'))
@@ -219,34 +220,49 @@ def sections_bars(sections: dict, out: Path) -> None:
     plt.close(fig)
 
 
-def sections_areas(sections: dict, out: Path, K: int = 208) -> None:
-    """Draws the share of each part in the bytes of the proof against the height, CCS 2025 (left) and blind (right).
+def _stack(ax: plt.Axes, rows: list[dict], labels: bool, names: bool = True, fontsize: float = 7) -> None:
+    """Stacks the megabytes of D, X and Omega against the height, D and X labelled inside their band."""
+    heights = [r['height'] for r in rows]
+    stack = [[r['bytes'][key] / 1e6 for r in rows] for key, _, _ in SECTIONS]
+    ax.stackplot(heights, stack, colors=[colour for _, _, colour in SECTIONS], edgecolor='white', linewidth=0.5,
+                 labels=[label for _, label, _ in SECTIONS] if labels else ())
+    base = 0.0
+    for (key, _, _), values in zip(SECTIONS, stack):
+        size = np.interp(LABEL_AT, heights, values)
+        if names and key != 'Omega':  # Omega is a thin band, named by the legend only.
+            ax.annotate(key, (LABEL_AT, base + size / 2), ha='center', va='center', fontsize=fontsize,
+                        color='white' if key == 'D' else '#1a1a19')
+        base += size
+    ax.set_xlim(0, heights[-1])
 
-    Both panels share a 0-100 % axis, so that both compositions read; the weight of each proof at the last height
-    is in the panel title (the absolute sizes are in blind-proof-size.pdf and blind-proof-sections.pdf).
+
+def sections_areas(sections: dict, out: Path, K: int = 208) -> None:
+    """Draws the megabytes of each part of the proof against the height, CCS 2025 (left) and blind (right), at one K.
+
+    Both panels share the y axis, so that the blind proof shows as the 18 times heavier one it is; an inset with
+    its own axis zooms on CCS 2025, whose band is too thin to read at that scale.
     """
     fig, axes = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.8), layout='constrained', sharey=True)
     for ax, scheme in zip(axes, ('ccs', 'draft')):
         rows = sorted((r for r in sections['rows'] if r['scheme'] == scheme and r['K'] == K), key=lambda r: r['height'])
-        heights = [r['height'] for r in rows]
-        totals = np.array([sum(r['bytes'].values()) for r in rows], dtype=float)
-        stack = [100 * np.array([r['bytes'][key] for r in rows]) / totals for key, _, _ in SECTIONS]
-        ax.stackplot(heights, stack, colors=[colour for _, _, colour in SECTIONS], edgecolor='white', linewidth=0.5,
-                     labels=[label for _, label, _ in SECTIONS])
-        base = 0.0
-        for (key, _, _), values in zip(SECTIONS, stack):
-            share = np.interp(LABEL_AT, heights, values)
-            if key != 'Omega':  # Omega is a thin band, named by the legend only.
-                ax.annotate(f'{key}  {values[-1]:.0f} %', (LABEL_AT, base + share / 2), ha='center', va='center',
-                            fontsize=7, color='white' if key == 'D' else '#1a1a19')
-            base += share
-        name = SCHEME_NAME['ccs' if scheme == 'ccs' else 'blind']
-        ax.set_title(f'{name}: {totals[-1] / 1e6:.0f} MB at the tip', fontsize=7)
+        _stack(ax, rows, labels=scheme == 'ccs', names=scheme != 'ccs')  # The zoom names the CCS bands.
+        total = sum(rows[-1]['bytes'].values()) / 1e6
+        ax.set_title(f"{SCHEME_NAME['ccs' if scheme == 'ccs' else 'blind']}: {total:.0f} MB at the tip", fontsize=7)
         height_ticks(ax)
-        ax.set_xlim(0, heights[-1])
         ax.set_axisbelow(True)
-    axes[0].set_ylim(0, 100)
-    axes[0].set_ylabel(f'Share of the proof, $K^\\star$={K} (%)')
+        if scheme == 'ccs':
+            zoom = ax.inset_axes([0.2, 0.3, 0.75, 0.55])
+            _stack(zoom, rows, labels=False, fontsize=6)
+            zoom.set_ylim(0, total * 1.15)
+            zoom.set_xticks([])
+            zoom.tick_params(axis='y', labelsize=6, length=2, pad=1)
+            zoom.set_title('zoom, MB', fontsize=6, pad=2, color=style.GRAY)
+            for spine in zoom.spines.values():
+                spine.set_visible(True)
+                spine.set_linewidth(0.5)
+                spine.set_color(style.GRAY)
+    axes[0].set_ylim(bottom=0)
+    axes[0].set_ylabel(f'Proof size, $K^\\star$={K} (MB)')
     fig.legend(*axes[0].get_legend_handles_labels(), loc='outside upper center', ncols=3, handlelength=1.2,
                columnspacing=1.0)
     fig.savefig(out / 'blind-proof-sections-height.pdf')
