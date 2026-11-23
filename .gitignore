@@ -1,4 +1,6 @@
 # variable-mls data
+results/
+out/
 headers/headers.json
 headers/headers-up-to-*.json
 data/*
