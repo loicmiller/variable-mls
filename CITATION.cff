@@ -1,0 +1,36 @@
+cff-version: 1.2.0
+message: "If you use this software, please cite the version you used, and the paper it accompanies."
+title: "variable-mls: NIPoPoWs with variable mining difficulty, measured on the Bitcoin header chain"
+type: software
+authors:
+  - family-names: Miller
+    given-names: Loïc
+license: MIT
+version: 1.0.0
+date-released: 2025-04-25
+repository-code: "https://github.com/loicmiller/variable-mls"
+keywords:
+  - NIPoPoW
+  - proof of work
+  - light clients
+  - Bitcoin
+  - variable difficulty
+preferred-citation:
+  type: conference-paper
+  title: "Mining in Logarithmic Space with Variable Difficulty"
+  authors:
+    - family-names: Miller
+      given-names: Loïc
+    - family-names: Pacaud
+      given-names: Dorian
+    - family-names: Derousseaux-Lebert
+      given-names: Nathanaël
+    - family-names: Anceaume
+      given-names: Emmanuelle
+    - family-names: Ludinard
+      given-names: Romaric
+  collection-title: "Proceedings of the 2025 ACM SIGSAC Conference on Computer and Communications Security (CCS '25)"
+  publisher:
+    name: ACM
+  year: 2025
+  doi: 10.1145/3719027.3744874
