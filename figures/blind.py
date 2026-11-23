@@ -190,83 +190,108 @@ def _section_rows(sections: dict, height: int) -> dict[tuple[str, int], dict]:
     return {(r['scheme'], r['K']): r for r in sections['rows'] if r['height'] == height}
 
 
-def sections_bars(sections: dict, out: Path) -> None:
-    """Draws the parts of the proof at the last height: blocks (left) and megabytes (right), one bar per scheme and K."""
+VARIANTS = {  # Field of experiments.proof_sections: file suffix, label of Omega, unit, scale.
+    'bytes': ('', r'$\Omega$ (headers only)', 'MB', 1e6),
+    'bytes_paper': ('-paper', r'$\Omega$ (full blocks)', 'GB', 1e9),
+}
+
+
+def _sections(field: str) -> list[tuple[str, str, str]]:
+    """The parts of a proof with the labels of one variant; under the papers' definitions X is full in CCS 2025."""
+    labels = {'D': 'D (compressed)', 'X': r'X ($\chi$ blocks)' if field == 'bytes' else r'X (full in CCS)',
+              'Omega': VARIANTS[field][1]}
+    return [(key, labels[key], colour) for key, _, colour in SECTIONS]
+
+
+def sections_bars(sections: dict, out: Path, field: str = 'bytes') -> None:
+    """Draws the parts of the proof at the last height: blocks (left) and size (right), one bar per scheme and K."""
+    suffix, _, unit, scale = VARIANTS[field]
     top = max(r['height'] for r in sections['rows'])
     rows = _section_rows(sections, top)
     bars = [(scheme, K) for scheme in ('draft', 'ccs') for K in (416, 208, 104) if (scheme, K) in rows]
     names = [f"{SCHEME_NAME['ccs' if scheme == 'ccs' else 'blind']}, {K}" for scheme, K in bars]
     fig, (left, right) = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.75), layout='constrained', sharey=True)
-    for ax, unit, scale in ((left, 'blocks', 1000), (right, 'bytes', 1e6)):
+    for ax, key_field, divisor in ((left, 'blocks', 1000), (right, field, scale)):
         start = np.zeros(len(bars))
-        for key, label, colour in SECTIONS:
-            values = np.array([rows[bar][unit][key] / scale for bar in bars])
+        for key, label, colour in _sections(field):
+            values = np.array([rows[bar][key_field][key] / divisor for bar in bars])
             ax.barh(range(len(bars)), values, left=start, height=0.7, color=colour, edgecolor='white',
                     linewidth=0.5, label=label)
             start += values
         for y, total in enumerate(start):
-            ax.annotate(f'{total:.1f}' if unit == 'blocks' else f'{total:.0f}', (total, y), xytext=(2, 0),
-                        textcoords='offset points', va='center', fontsize=6.5, color=style.GRAY)
+            text = f'{total:.1f}' if key_field == 'blocks' or unit == 'GB' else f'{total:.0f}'
+            ax.annotate(text, (total, y), xytext=(2, 0), textcoords='offset points', va='center', fontsize=6.5,
+                        color=style.GRAY)
         ax.set_xlim(0, start.max() * 1.22)
         ax.grid(True, axis='x')
         ax.set_axisbelow(True)
         ax.tick_params(axis='y', length=0)
     left.set_yticks(range(len(bars)), names)
     left.set_xlabel('Blocks (thousands)')
-    right.set_xlabel('Size (MB)')
+    right.set_xlabel(f'Size ({unit})')
     fig.legend(*left.get_legend_handles_labels(), loc='outside upper center', ncols=3, handlelength=1.2,
-               columnspacing=1.0)
-    fig.savefig(out / 'blind-proof-sections.pdf')
+               columnspacing=0.8)
+    fig.savefig(out / f'blind-proof-sections{suffix}.pdf')
     plt.close(fig)
 
 
-def _stack(ax: plt.Axes, rows: list[dict], labels: bool, names: bool = True, fontsize: float = 7) -> None:
-    """Stacks the megabytes of D, X and Omega against the height, D and X labelled inside their band."""
+def _stack(ax: plt.Axes, rows: list[dict], field: str, labels: bool, names: bool = True,
+           fontsize: float = 7) -> None:
+    """Stacks the size of D, X and Omega against the height, the tall bands labelled inside."""
+    scale = VARIANTS[field][3]
     heights = [r['height'] for r in rows]
-    stack = [[r['bytes'][key] / 1e6 for r in rows] for key, _, _ in SECTIONS]
+    stack = [[r[field][key] / scale for r in rows] for key, _, _ in SECTIONS]
     ax.stackplot(heights, stack, colors=[colour for _, _, colour in SECTIONS], edgecolor='white', linewidth=0.5,
-                 labels=[label for _, label, _ in SECTIONS] if labels else ())
+                 labels=[label for _, label, _ in _sections(field)] if labels else ())
+    total = sum(values[-1] for values in stack)
     base = 0.0
     for (key, _, _), values in zip(SECTIONS, stack):
         size = np.interp(LABEL_AT, heights, values)
-        if names and key != 'Omega':  # Omega is a thin band, named by the legend only.
-            ax.annotate(key, (LABEL_AT, base + size / 2), ha='center', va='center', fontsize=fontsize,
-                        color='white' if key == 'D' else '#1a1a19')
+        if names and values[-1] > 0.15 * total:  # Thin bands are named by the legend only.
+            ax.annotate(key if key != 'Omega' else r'$\Omega$', (LABEL_AT, base + size / 2), ha='center',
+                        va='center', fontsize=fontsize, color='white' if key == 'D' else '#1a1a19')
         base += size
     ax.set_xlim(0, heights[-1])
 
 
-def sections_areas(sections: dict, out: Path, K: int = 208) -> None:
-    """Draws the megabytes of each part of the proof against the height, CCS 2025 (left) and blind (right), at one K.
+def sections_areas(sections: dict, out: Path, field: str = 'bytes', K: int = 208) -> None:
+    """Draws the size of each part of the proof against the height, CCS 2025 (left) and blind (right), at one K.
 
-    Both panels share the y axis, so that the blind proof shows as the 18 times heavier one it is; an inset with
-    its own axis zooms on CCS 2025, whose band is too thin to read at that scale.
+    Both panels share the y axis, so that the heavier proof shows as heavier; an inset with its own axis zooms on
+    the lighter one when it is too thin to read at that scale.
     """
+    suffix, _, unit, scale = VARIANTS[field]
     fig, axes = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.8), layout='constrained', sharey=True)
-    for ax, scheme in zip(axes, ('ccs', 'draft')):
-        rows = sorted((r for r in sections['rows'] if r['scheme'] == scheme and r['K'] == K), key=lambda r: r['height'])
-        _stack(ax, rows, labels=scheme == 'ccs', names=scheme != 'ccs')  # The zoom names the CCS bands.
-        total = sum(rows[-1]['bytes'].values()) / 1e6
-        ax.set_title(f"{SCHEME_NAME['ccs' if scheme == 'ccs' else 'blind']}: {total:.0f} MB at the tip", fontsize=7)
+    by_scheme = {scheme: sorted((r for r in sections['rows'] if r['scheme'] == scheme and r['K'] == K),
+                                key=lambda r: r['height']) for scheme in ('ccs', 'draft')}
+    totals = {scheme: sum(rows[-1][field].values()) / scale for scheme, rows in by_scheme.items()}
+    light = min(totals, key=totals.get) if max(totals.values()) > 4 * min(totals.values()) else None
+    for ax, (scheme, rows) in zip(axes, by_scheme.items()):
+        _stack(ax, rows, field, labels=scheme == 'ccs', names=scheme != light)  # The zoom names the light bands.
+        name = SCHEME_NAME['ccs' if scheme == 'ccs' else 'blind']
+        total = totals[scheme]
+        ax.set_title(f'{name}: {total:.2f} {unit} at the tip' if unit == 'GB' else f'{name}: {total:.0f} {unit} at the tip',
+                     fontsize=7)
         height_ticks(ax)
         ax.set_axisbelow(True)
-        if scheme == 'ccs':
+        if scheme == light:
             zoom = ax.inset_axes([0.2, 0.3, 0.75, 0.55])
-            _stack(zoom, rows, labels=False, fontsize=6)
+            _stack(zoom, rows, field, labels=False, fontsize=6)
             zoom.set_ylim(0, total * 1.15)
             zoom.set_xticks([])
             zoom.tick_params(axis='y', labelsize=6, length=2, pad=1)
-            zoom.set_title('zoom, MB', fontsize=6, pad=2, color=style.GRAY)
+            zoom.set_title(f'zoom, {unit}', fontsize=6, pad=2, color=style.GRAY)
             for spine in zoom.spines.values():
                 spine.set_visible(True)
                 spine.set_linewidth(0.5)
                 spine.set_color(style.GRAY)
     axes[0].set_ylim(bottom=0)
-    axes[0].set_ylabel(f'Proof size, $K^\\star$={K} (MB)')
+    axes[0].set_ylabel(f'Proof size, $K^\\star$={K} ({unit})')
     fig.legend(*axes[0].get_legend_handles_labels(), loc='outside upper center', ncols=3, handlelength=1.2,
-               columnspacing=1.0)
-    fig.savefig(out / 'blind-proof-sections-height.pdf')
+               columnspacing=0.8)
+    fig.savefig(out / f'blind-proof-sections-height{suffix}.pdf')
     plt.close(fig)
+
 
 def main() -> None:
     """Draws the figures into the output directory and writes the numbers quoted in the text."""
@@ -288,8 +313,10 @@ def main() -> None:
     result = numbers(build, runs)
     if args.sections:
         sections = json.loads(Path(args.sections).read_text())
-        sections_bars(sections, out)
-        sections_areas(sections, out)
+        for field in VARIANTS:
+            if all(field in r for r in sections['rows']):
+                sections_bars(sections, out, field)
+                sections_areas(sections, out, field)
         top = max(r['height'] for r in sections['rows'])
         result['sections'] = [r for r in sections['rows'] if r['height'] == top]
     (out / 'blind-numbers.json').write_text(json.dumps(result, indent=1))
