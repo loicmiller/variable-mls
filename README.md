@@ -55,6 +55,9 @@ Latencies depend on the machine.
 
 ```bash
 python -m experiments.proof_over_chain --mode blind --headers HEADERS -K 208   # blind mining, with verifier timings
+python -m experiments.build_time --headers HEADERS --out results/build-time.json   # building a proof from scratch
+python -m experiments.block_sizes --datadir ~/.bitcoin --headers HEADERS --out results/block-sizes.npy
+python -m experiments.proof_sections --headers HEADERS --block-sizes results/block-sizes.npy --out results/sections.json
 python -m experiments.gamma estimate HEADERS --out results/gamma               # gamma as the original notebook estimates it
 python -m experiments.gamma bound HEADERS --out results/gamma-bound            # gamma(s, w) with exact intervals
 python -m experiments.gamma simulate --out results/gamma-simulation.json      # estimators against known hashrate paths
@@ -72,11 +75,27 @@ the previous export:
 python -m experiments.export_headers --datadir ~/.bitcoin --reference headers/headers.zip --out-dir headers
 ```
 
-The size of the UTXO set at every height, which a NIPoPoW must carry, comes from a full replay of the blocks
-(`experiments/utxo_snapshot.py`, days and some 80 GB).
+The size of every block (`experiments.block_sizes`) is read from a stopped node's block files, a few minutes. The
+size of the UTXO set at every height, which a NIPoPoW must carry, comes from a full replay of the blocks
+(`experiments/utxo_snapshot.py`, days and some 80 GB); at the tip alone, the node gives it directly
+(`bitcoin-cli gettxoutsetinfo`).
 
 RPC credentials never go in the repository: the client reads the node's cookie, then `~/.config/vmls/rpc.env`
 (`VMLS_RPC_USER=…` and `VMLS_RPC_PASSWORD=…`, readable by you only), then the environment variables of the same names.
+
+## History
+
+- **Version 2** (in progress): the package `vmls`, one command per measurement, tests and CI. See
+  [CHANGELOG.md](CHANGELOG.md).
+- **Version 1.0.0** (2025-04-25, tags `v1.0.0` and `ccs-2025`): the code and data of the CCS 2025 paper.
+
+## Citing
+
+Cite the CCS 2025 paper, and the version of this code you used; [CITATION.cff](CITATION.cff) holds both.
+
+## Security
+
+See [SECURITY.md](SECURITY.md); to contribute, [CONTRIBUTING.md](CONTRIBUTING.md).
 
 ## License
 
