@@ -4,17 +4,18 @@ build-backend = "setuptools.build_meta"
 
 [project]
 name = "vmls"
-version = "2.0.0"
+version = "2.0.0.dev0"
 description = "NIPoPoWs with variable mining difficulty, measured on the Bitcoin header chain"
 readme = "README.md"
-requires-python = ">=3.11"
+requires-python = ">=3.12"
 license = { text = "MIT" }
 authors = [{ name = "Loïc Miller" }]
 keywords = ["NIPoPoW", "proof of work", "light client", "Bitcoin", "variable difficulty", "blockchain"]
-dependencies = ["numpy", "pandas", "matplotlib", "scipy", "requests"]
+# Lower bounds: the versions the regressions were checked with (2026-11-23).
+dependencies = ["numpy>=2.5", "pandas>=3.1", "matplotlib>=3.11", "scipy>=1.18", "requests>=2.34"]
 
 [project.optional-dependencies]
-dev = ["pytest"]
+dev = ["pytest>=9.2"]
 
 [tool.setuptools]
 packages = ["vmls"]
