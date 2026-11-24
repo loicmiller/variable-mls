@@ -2,7 +2,7 @@
 
 ## Setup
 
-Python 3.11 or later, in a virtual environment outside the repository:
+Python 3.12 or later, in a virtual environment outside the repository:
 
 ```bash
 python3 -m venv ~/.venvs/vmls
@@ -18,8 +18,8 @@ python -m pytest --runslow    # also the regressions on the real chain (a few mi
 
 The slow tests need the Bitcoin headers and the reference data, kept outside the repository; they are skipped when
 missing. `VMLS_HEADERS` points to a headers export (default `headers/headers-up-to-974505.json`) and
-`VMLS_REFERENCE` to the reference directory (default `data/reference`). CI runs the fast tests on Python 3.11 and
-3.14 at every push.
+`VMLS_REFERENCE` to the reference directory (default `data/reference`). CI runs the fast tests on Linux, Windows and
+macOS, with Python 3.12 and 3.14, at every push.
 
 ## Rules
 
@@ -27,7 +27,10 @@ missing. `VMLS_HEADERS` points to a headers export (default `headers/headers-up-
 - One command per measurement in `experiments/`, writing JSON or NPZ to `results/`; one script per set of figures in
   `figures/`, reading those results and writing PDFs to `out/`. Every number a paper quotes comes from a result file.
 - Figures are drawn at the width they are printed, with the style of `vmls/style.py`.
-- Nothing personal or secret in the repository: no credentials, no paths of a machine, no data files.
+- Nothing personal or secret in the repository: no credentials, no paths of a machine, no data files. Version 1's
+  notebooks were committed with their outputs, which printed the paths of the machine they ran on: clear outputs
+  before committing a notebook, and print paths relative to the repository. `tests/test_repository.py` fails on a
+  machine path in any tracked file.
 - A change users can see gets its line under *Unreleased* in `CHANGELOG.md`, in the same commit.
 - Commits use the GitHub noreply address.
 

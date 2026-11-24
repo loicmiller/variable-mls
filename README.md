@@ -8,6 +8,10 @@ compare two chains without downloading them. This repository implements the prov
 over the whole history of Bitcoin, and measures what they cost: proof size, prover and verifier time, and the
 hashrate fluctuation the security proofs assume.
 
+Two constructions are implemented: the one of the CCS 2025 paper, and **blind mining**, where the level of a block
+stays hidden until the block is k blocks deep (against targeted block suppression), with a capped Score against
+difficulty manipulation.
+
 ## Papers
 
 - **CCS 2025.** Loïc Miller, Dorian Pacaud, Nathanaël Derousseaux-Lebert, Emmanuelle Anceaume and Romaric Ludinard.
@@ -15,12 +19,10 @@ hashrate fluctuation the security proofs assume.
   [10.1145/3719027.3744874](https://doi.org/10.1145/3719027.3744874).
   The code and data of the paper are tagged [`ccs-2025`](../../tree/ccs-2025); the published figures are in
   [`paper-figures/ccs-2025/`](paper-figures/ccs-2025). The current code reproduces them (see below).
-- **Blind mining.** A variant where the level of a block stays hidden until the block is k blocks deep, against
-  targeted block suppression, with a capped Score against difficulty manipulation. Work in progress.
 
 ## Install
 
-Python 3.11 or later.
+Python 3.12 or later.
 
 ```bash
 python3 -m venv ~/.venvs/vmls
@@ -39,7 +41,43 @@ python3 -m venv ~/.venvs/vmls
 | `headers/headers.zip` | The 865,043 Bitcoin headers of the CCS 2025 paper (up to October 11, 2024) |
 | `paper-figures/` | The figures as published |
 
-`results/`, `out/` and `data/` are not tracked.
+`results/`, `out/` and `data/` are not tracked. `rpc.env.example` shows the RPC credentials file (see Bitcoin data).
+
+## How it fits together
+
+```
+headers (JSON or zip) ── vmls.chain.blocks_from_headers ──> list[Block], each with its level
+                                                              │
+     prover:  vmls.nipopow.compress, called once per new block (Dissolve, then keep D, X and Omega)
+                                                              │
+   verifier:  vmls.cost.validate_proof, then vmls.nipopow.compare_published (CCS 2025)
+              or compare_blind (blind: level 0, else the Score capped by v, else the online test, not waited for)
+                                                              │
+   measures:  vmls.sizes (bytes of headers and proofs), vmls.cost (timings), vmls.gamma* (hashrate fluctuation)
+                                                              │
+experiments/<name>.py ──> results/*.json, *.npz ──> figures/<name>.py ──> out/*.pdf
+```
+
+- **Levels.** Under CCS 2025, a block's level is the number of times its hash beats its own target (`level`).
+  Under blind mining, it comes from a nonce `ctr` committed in the header and revealed k blocks later
+  (`blind_level`). Bitcoin headers have no such nonce: `simulated_nonce` derives one from the block hash, so blind
+  levels follow the distribution of a blind-mined chain and runs are reproducible. This is the main assumption of the
+  measurements.
+- **Parameters** (`vmls.nipopow.Params`): `K` (K* in the papers), a level enters the proof once it holds 2K blocks;
+  `k = 323`, the length of the unstable suffix Omega, kept as full blocks; `chi = 4032`, the length of X, kept
+  uncompressed for the difficulty checks. D holds the sampled blocks below them.
+- **Schemes** (`vmls.sizes.SCHEMES`), the byte models the measurements compare:
+
+  | Scheme | Construction | Header |
+  |---|---|---|
+  | `ccs` | CCS 2025 | the 80-byte Bitcoin header plus one pointer per level |
+  | `draft` | blind mining | the header plus the commitment H(ctr), k pointers and a tuple per level |
+  | `ccs-merkle`, `draft-merkle` | the same | pointers and tuples replaced by a Merkle root (a possible optimisation) |
+
+  `experiments.proof_over_chain --mode ccs` measures `ccs` and `ccs-merkle`; `--mode blind`, `draft` and
+  `draft-merkle`.
+- **Tests.** `tests/` runs every piece on synthetic chains (`vmls.synthetic`); the slow regressions replay the real
+  chain and compare proofs, block by block, with those of version 1.
 
 ## Reproduce the CCS 2025 figures
 

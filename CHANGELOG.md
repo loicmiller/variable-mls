@@ -16,12 +16,13 @@ version 1 block for block (K = 104 and 208, regression tests against the dumps o
   `results/` and figures to `out/`, neither tracked. Version 1 stays available under the tags `v1.0.0` and `ccs-2025`.
 - RPC credentials are no longer read from the code: the client uses the node's cookie, then
   `~/.config/vmls/rpc.env`, then the variables `VMLS_RPC_USER` and `VMLS_RPC_PASSWORD`.
+- Python 3.12 or later.
 
 ### Added
 
 - Blind mining: blind levels from a committed nonce, revealed k blocks deep; `compare_blind` with the capped Score.
 - `experiments.proof_over_chain`: the proof grown block by block over the whole chain, with the update time, the size
-  in blocks and in bytes, and the verifier's CPU time on forks near the tip and deep in the chain.
+  in blocks and in bytes, and the verifier's time on forks near the tip and deep in the chain.
 - `experiments.build_time`: the time to build a proof from scratch at many heights, step by step.
 - `experiments.proof_sections`: the size of each part of a proof (D, X, Ω) against the height; with
   `experiments.block_sizes`, which reads the size of every block from a stopped node's block files, the full blocks
@@ -32,7 +33,11 @@ version 1 block for block (K = 104 and 208, regression tests against the dumps o
   confidence intervals; `experiments.attack_probability`; `experiments.show_proof`.
 - The byte model of headers and proofs (`vmls.sizes`), with and without a Merkle root over the pointers.
 - The published figures of the CCS 2025 paper in `paper-figures/ccs-2025/`, and `figures.ccs2025` to redraw them.
-- Tests on synthetic chains, regressions on the real chain (`--runslow`), and CI on Python 3.11 and 3.14.
+- `figures.blind`: proof size, construction from scratch and update per block, blind mining against CCS 2025.
+- Tests on synthetic chains, regressions on the real chain (`--runslow`), a check that no tracked file holds the path
+  of a machine, and CI on Linux, Windows and macOS with Python 3.12 and 3.14.
+- `rpc.env.example`, the RPC credentials file, and lower bounds for the dependencies (the versions the regressions
+  were checked with).
 
 ### Fixed
 
