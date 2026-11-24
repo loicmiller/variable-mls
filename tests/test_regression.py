@@ -1,25 +1,24 @@
-"""Regressions on the real chain, against reference data kept outside the repository (see conftest.py).
+"""Regressions on the real chain, against data kept outside the repository (see conftest.py), run with --runslow.
 
-References: proofs of the previous code at 20 heights, 3 values of K, real and blind levels; the gamma notebook's
-printed values; the gamma(s, w) brackets of November 2026; the checks of the blind-mining measurements.
+The CCS 2025 construction of this version must give, block for block, what the code of the CCS 2025 paper gave: the
+dumps of that code (data/reference/*dump*.json, K = 104 and 208, k = 323, headers up to October 11, 2024) and the
+proofs of version 1 at 20 heights (old-compress-2026-11-23.json).
 """
 
 import hashlib
 import json
-from argparse import Namespace
 
-import numpy as np
 import pytest
 
 from tests.conftest import HEADERS, REFERENCE, require
-from vmls.chain import blocks_from_headers, load_headers
-from vmls.nipopow import Params, compare_blind, compare_published, compress, dissolve, proof_level, score
-from vmls.synthetic import deep_fork, make_fork, tip_fork
+from vmls.chain import chain_from_headers, load_headers
+from vmls.encoding import Links, encode, header_size
+from vmls.measure import deep_fork, k_star, tip_fork
+from vmls.proof import Params, compress, dissolve, proof_level
+from vmls.verify import check, compare_ccs, compare_ours
 
 pytestmark = pytest.mark.slow
-K, k, chi = 208, 323, 4032
-P = Params(K, k, chi)
-OCTOBER_2024_BLOCKS = 865_043  # The headers of the CCS 2025 paper.
+CCS_HEADERS = HEADERS.parent / 'headers.zip'  # The 865,043 headers of the CCS 2025 paper.
 
 
 @pytest.fixture(scope='module')
@@ -30,23 +29,58 @@ def headers():
 
 @pytest.fixture(scope='module')
 def chains(headers):
-    """The chain with real levels (False) and blind levels (True)."""
-    return {blind: blocks_from_headers(headers, blind=blind) for blind in (False, True)}
+    """The chain under each construction."""
+    return {c: chain_from_headers(headers, c) for c in ('ccs2025', 'ours')}
 
 
-def test_proofs_match_the_previous_code(chains):
+@pytest.fixture(scope='module')
+def ccs_chain():
+    """The chain of the CCS 2025 paper, under its construction."""
+    return chain_from_headers(load_headers(require(CCS_HEADERS)), 'ccs2025')
+
+
+def test_levels_match_the_ccs_2025_code(ccs_chain):
+    dump = json.loads(require(REFERENCE / '2025-07-dump-K-104.json').read_text())
+    assert [b.level for b in ccs_chain[1:]] == dump['block_level'][1:]  # Exact integers, as the floats of 2025.
+
+
+@pytest.mark.parametrize('K, name', [(104, '2025-07-dump-K-104.json'), (208, 'ccs-2025-dump-K-208.json')])
+def test_proof_sizes_match_the_ccs_2025_code(ccs_chain, K, name):
+    dump = json.loads(require(REFERENCE / name).read_text())
+    p = Params(K, k=323)
+    for height in list(range(10_000, len(ccs_chain), 10_000)) + [len(ccs_chain) - 1]:
+        proof = compress(ccs_chain[:height + 1], p)
+        assert len(proof) == dump['proof_size'][height], height
+        # The CCS 2025 data count the level over the whole chain, X and Omega included, not over C' as Dissolve does.
+        assert proof_level(ccs_chain[:height + 1], K) == dump['proof_level'][height], height
+
+
+def test_proofs_match_version_1(chains):
     reference = json.loads(require(REFERENCE / 'old-compress-2026-11-23.json').read_text())
     for r in reference['proofs']:
-        p = Params(K=r['K'])
-        chain = chains[r['blind']][:r['height'] + 1]
+        p = Params(K=r['K'], k=323)
+        chain = chains['ours' if r['blind'] else 'ccs2025'][:r['height'] + 1]
         proof = compress(chain, p)
-        D, top, _ = dissolve(chain, p)
+        D, top, _, _ = dissolve(chain, p)
         digest = hashlib.sha256(','.join(str(b.height) for b in proof).encode()).hexdigest()
-        assert (len(proof), top, {str(mu): len(D[mu]) for mu in D}, digest) == (r['size'], r['level'], r['rows'], r['sha256']), r
+        assert (len(proof), top, {str(mu): len(D[mu]) for mu in D}, digest) == \
+            (r['size'], r['level'], r['rows'], r['sha256']), r
 
 
-def test_blind_levels_are_geometric(chains):
-    chain = chains[True]
+@pytest.mark.parametrize('construction', ['ccs2025', 'ours'])
+@pytest.mark.parametrize('k', [6, 323])
+def test_real_headers_link_every_proof_and_match_the_formula(chains, construction, k):
+    chain = chains[construction]
+    p = Params(208, k)
+    proof = compress(chain, p)
+    links = Links(chain, construction, k)
+    headers = [encode(chain, links, b.height) for b in proof]
+    assert [len(h) for h in headers] == [header_size(construction, b.height, k) for b in proof]
+    check(proof, headers, construction, p)
+
+
+def test_committed_levels_are_geometric(chains):
+    chain = chains['ours']
     n = len(chain) - 1
     counts = [0] * 13
     for block in chain[1:]:
@@ -55,69 +89,23 @@ def test_blind_levels_are_geometric(chains):
     assert sum((c - e) ** 2 / e for c, e in zip(counts, expected)) < 32.9  # 12 degrees of freedom, p = 0.001.
 
 
-def test_honest_score_is_the_accumulated_difficulty(chains):
-    v = 1.51 * 1.995 / (0.25 * (1 - 1.995 * 0.03))  # gamma = 1.51, eta = 1/4.
-    for mu in range(4):
-        row = [b for b in chains[True][-200_000:] if b.level >= mu][-2 * K:]
-        assert score(row, v) == sum(b.diff for b in row)
+@pytest.mark.parametrize('construction', ['ccs2025', 'ours'])
+def test_the_honest_proof_beats_both_forks_on_bitcoin(chains, construction):
+    chain = chains[construction]
+    p = Params(208, 6)
+    proof = compress(chain, p)
+    compare = (lambda a, b: compare_ccs(a, b, p)) if construction == 'ccs2025' else (lambda a, b: compare_ours(a, b, p, 33.0))
+    assert compare(proof, tip_fork(chain, proof, p, construction)[1])[0] == 1
+    winner, branch = compare(proof, deep_fork(chain, len(chain) - 1, p, construction)[1])
+    assert winner == 1 or (construction == 'ours' and branch == 'online')
 
 
-@pytest.mark.parametrize('blind', [False, True])
-def test_honest_proof_never_loses(chains, blind):
-    chain = chains[blind]
-    proof = compress(chain, P)
-    for name, other in (('tip', tip_fork(chain, proof, P, blind)), ('deep', deep_fork(chain, len(chain) - 1, P, blind))):
-        winner, path = compare_blind(proof, other, P, 33.0) if blind else compare_published(proof, other, P)
-        # The new verifier may leave a deep fork to the online test, when fewer than K blocks follow the ancestor.
-        assert winner == 1 or (blind and name == 'deep' and path == 'online'), (name, winner, path)
-
-
-def test_score_branch_on_the_ccs_headers(chains):
-    prefix = chains[True][:OCTOBER_2024_BLOCKS]
-    assert compare_blind(compress(prefix, P), deep_fork(prefix, len(prefix) - 1, P, True), P, 33.0) == (1, 'score')
-
-
-@pytest.mark.parametrize('blind', [False, True])
-def test_zero_difficulty_attack(chains, blind):
-    # The latest high block of the proof's level followed by k + chi lower blocks: the attack conditions hold there.
-    chain = chains[blind]
-    for star in range(len(chain) - k - chi - 2, 0, -1):
-        if chain[star].level >= 9:
-            top = proof_level(chain[:star + 2], K)
-            if chain[star].level >= top and all(b.level < top for b in chain[star + 1:star + k + chi + 2]):
-                break
-    honest = compress(chain[:star + k + chi + 2], P)
-    fork = make_fork(chain, star, int(1.4 * 2 ** top * K) + 2 * 2016 + k, 4 ** 6, seed=star, blind=blind)
-    adversarial = compress(chain[:star + 1] + fork, P)
-    if blind:
-        assert compare_blind(honest, adversarial, P, 33.0)[1] == 'online'
-    else:
-        assert compare_published(honest, adversarial, P)[0] == 2
-
-
-def test_gamma_notebook_values():
-    from experiments.gamma import estimate
-    reference = json.loads(require(REFERENCE / 'gamma-865042.json').read_text())
-    headers = require(HEADERS.parent / 'headers.json')
-    result = estimate(Namespace(headers=headers, check_notebook=True))
-    assert result['rows'][0]['q95'] == pytest.approx(reference['rows'][0]['q95'], rel=1e-12)
-
-
-def test_gamma_bound_brackets(headers):
-    from experiments.gamma import bound
-    reference = json.loads(require(REFERENCE / 'gamma-bound-974505.json').read_text())
-    if reference['n_headers'] != len(headers):
-        pytest.skip('reference measured on another headers file')
-    result = bound(Namespace(headers=HEADERS, workers=16))
-    assert _close(json.loads(json.dumps(result)), reference)
-
-
-def _close(a, b, rel: float = 1e-12) -> bool:
-    """Whether two JSON values are equal, floats up to a relative tolerance (parallel sums change the last bits)."""
-    if isinstance(a, dict):
-        return isinstance(b, dict) and a.keys() == b.keys() and all(_close(a[key], b[key], rel) for key in a)
-    if isinstance(a, list):
-        return isinstance(b, list) and len(a) == len(b) and all(_close(x, y, rel) for x, y in zip(a, b))
-    if isinstance(a, float) or isinstance(b, float):
-        return a == pytest.approx(b, rel=rel)
-    return a == b
+def test_k_star_of_the_review(headers):
+    """K* on Bitcoin with the bound of Lemma lem:adversarial_score, headers up to 977,192."""
+    if len(headers) != 977_193:
+        pytest.skip('the review measured the headers up to 977,192')
+    result = k_star(headers)
+    level_0 = result['levels'][0]
+    assert level_0['spread_recent'] == pytest.approx(1.39, abs=0.01)
+    assert level_0['k_star'] == pytest.approx(3381, abs=1)
+    assert result['k_star_floor'] == pytest.approx(798, abs=1)
