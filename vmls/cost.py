@@ -62,7 +62,9 @@ def validate_proof(proof: list[Block], scheme: str, p: Params) -> None:
 
 def time_verifier(proof_1: list[Block], proof_2: list[Block], scheme: str, p: Params, v: float,
                   repetitions: int = 5) -> tuple[float, int | None, str]:
-    """CPU time of a verifier that validates two proofs, dissolves them and compares them.
+    """Elapsed time of a verifier that validates two proofs, dissolves them and compares them.
+
+    The verifier runs on one thread without I/O, so the wall clock used here matches its CPU time.
 
     Args:
         proof_1: The first proof.

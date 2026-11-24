@@ -2,7 +2,7 @@
 
 For each block: the time to update the proof (checking the header, revealing the block k deep under blind mining,
 compressing), the extra time of a Merkle root over the pointers, the size of the proof and the level of the block.
-Every few epochs: the size of the proof in bytes under each scheme, and the CPU time of a verifier facing a fork near
+Every few epochs: the size of the proof in bytes under each scheme, and the time of a verifier facing a fork near
 the tip and a fork a quarter of the chain ago.
 
     python -m experiments.proof_over_chain --mode ccs --headers headers/headers.json -K 208
