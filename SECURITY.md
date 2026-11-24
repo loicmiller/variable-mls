@@ -20,6 +20,16 @@ Never include an RPC password, a `rpc.env` file or a node's cookie in a report.
   exports are not tracked.
 - **Network**: apart from the local RPC, nothing connects anywhere.
 
+## Review of version 2 (2026-11-24)
+
+- No server, no network access but RPC calls to the local node (`requests`, with a timeout); no `subprocess`,
+  `eval`, `pickle` or unverified TLS in the package.
+- Results are written with exclusive creation: a run never overwrites an earlier one.
+- Dependencies: nothing outdated in the package's own dependencies (`pip list --outdated`: pip and packaging only).
+- History: no credential added since the rewrite of 2026-11-23 (`git log -p`); the paths of a machine that version 1's
+  notebook outputs printed are in the public history and are no secret; `tests/test_repository.py` keeps any new one
+  out.
+
 ## History
 
 Until 2026-11-23 the repository held an RPC user and password for a local node in `src/snapshot_size.py`. The
