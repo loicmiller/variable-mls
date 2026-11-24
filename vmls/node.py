@@ -1,4 +1,4 @@
-"""Reading headers and blocks from a Bitcoin Core node over JSON-RPC.
+"""What a Bitcoin Core node gives: its headers and UTXO set over JSON-RPC, the size of its blocks from its files.
 
 Credentials never live in this repository. In order, the client uses the cookie bitcoind writes in its data
 directory, then a file ~/.config/vmls/rpc.env, then the environment variables VMLS_RPC_USER and VMLS_RPC_PASSWORD:
@@ -9,15 +9,19 @@ directory, then a file ~/.config/vmls/rpc.env, then the environment variables VM
 Keep that file readable by you only (chmod 600), and the RPC port bound to 127.0.0.1.
 """
 
+import hashlib
 import json
 import os
+from concurrent.futures import ThreadPoolExecutor
 from pathlib import Path
 
+import numpy as np
 import requests
 
 GENESIS_HASH = '000000000019d6689c085ae165831e934ff763ae46a2a6c172b3f1b60a8ce26f'
 CONFIG_FILE = Path.home() / '.config' / 'vmls' / 'rpc.env'
 BATCH = 5_000  # Calls per request.
+MAGIC = bytes.fromhex('f9beb4d9')  # Start of each record of a mainnet block file.
 
 
 def credentials(datadir: str | Path | None = None, config_file: Path = CONFIG_FILE,
@@ -167,3 +171,66 @@ def save_headers(headers: list[dict], directory: str | Path) -> Path:
     with open(path, 'x') as f:
         json.dump(headers, f, separators=(',', ':'))
     return path
+
+
+def utxo_set(node: Node) -> dict:
+    """The size of the UTXO set at the tip, as the node counts it (gettxoutsetinfo, a few minutes).
+
+    Args:
+        node: The node.
+
+    Returns:
+        Height, number of unspent outputs and serialized size in bytes.
+    """
+    info = node.call('gettxoutsetinfo')
+    return {'height': info['height'], 'outputs': info['txouts'], 'bytes': info['bogosize']}
+
+
+def scan_block_file(path: Path, key: bytes) -> list[tuple[str, int]]:
+    """The hash and size of each block a blk*.dat file stores, reading 88 bytes per block.
+
+    Each record is the network magic, the block size and the block, whose first 80 bytes are its header.
+
+    Args:
+        path: A blk*.dat file, opened read-only.
+        key: The XOR key of the block files (blocks/xor.dat, Bitcoin Core 28+; eight zeros when absent).
+
+    Returns:
+        (block hash in RPC byte order, size in bytes) for each record.
+    """
+    blocks = []
+    with open(path, 'rb', buffering=0) as f:
+        end, position = path.stat().st_size, 0
+        while position + 88 <= end:
+            f.seek(position)
+            raw = bytes(b ^ key[(position + i) % len(key)] for i, b in enumerate(f.read(88)))
+            if raw[:4] != MAGIC:  # Preallocated zeros at the end of the file.
+                break
+            size = int.from_bytes(raw[4:8], 'little')
+            blocks.append((hashlib.sha256(hashlib.sha256(raw[8:88]).digest()).digest()[::-1].hex(), size))
+            position += 8 + size
+    return blocks
+
+
+def block_sizes(datadir: str | Path, headers: list[dict], threads: int = 16) -> np.ndarray:
+    """The size of every block of the exported chain, from the block files of a stopped node.
+
+    Args:
+        datadir: Data directory of the node.
+        headers: The exported headers, which fix the chain and its heights.
+        threads: Files read at once (a network share answers faster to many requests).
+
+    Returns:
+        The size of each block by height, -1 where the files do not hold it.
+    """
+    blocks_dir = Path(datadir).expanduser() / 'blocks'
+    key_path = blocks_dir / 'xor.dat'
+    key = key_path.read_bytes() if key_path.exists() else bytes(8)
+    height_of = {header['hash']: height for height, header in enumerate(headers)}
+    sizes = np.full(len(headers), -1, dtype=np.int64)
+    with ThreadPoolExecutor(threads) as pool:
+        for found in pool.map(lambda path: scan_block_file(path, key), sorted(blocks_dir.glob('blk*.dat'))):
+            for block_hash, size in found:
+                if block_hash in height_of:
+                    sizes[height_of[block_hash]] = size
+    return sizes

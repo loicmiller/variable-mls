@@ -38,3 +38,26 @@ def test_save_never_overwrites(tmp_path):
     assert path.name == 'headers-up-to-2.json'
     with pytest.raises(FileExistsError):
         save_headers(headers, tmp_path)
+
+
+def test_block_files_are_read_with_their_xor_key(tmp_path):
+    import hashlib
+
+    import numpy as np
+
+    from vmls.node import MAGIC, block_sizes
+    blocks_dir = tmp_path / 'blocks'
+    blocks_dir.mkdir()
+    key = bytes(range(1, 9))
+    headers, records = [], b''
+    for i, body in enumerate([b'a' * 120, b'b' * 300, b'c' * 90]):
+        header = bytes([i]) * 80
+        block = header + body
+        headers.append({'hash': hashlib.sha256(hashlib.sha256(header).digest()).digest()[::-1].hex(), 'bits': '1d00ffff',
+                        'time': i})
+        records += MAGIC + len(block).to_bytes(4, 'little') + block
+    records += bytes(64)  # Preallocated zeros at the end of the file.
+    (blocks_dir / 'xor.dat').write_bytes(key)
+    (blocks_dir / 'blk00000.dat').write_bytes(bytes(b ^ key[i % 8] for i, b in enumerate(records)))
+    headers.append({'hash': '00' * 32, 'bits': '1d00ffff', 'time': 3})  # Not in the files.
+    assert block_sizes(tmp_path, headers, threads=2).tolist() == [200, 380, 170, -1]
