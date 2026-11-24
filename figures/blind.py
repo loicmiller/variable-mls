@@ -1,10 +1,10 @@
-"""Figures of the blind-mining paper: proof size, construction from scratch and update per block, against CCS 2025.
+"""Figures of blind mining against CCS 2025: proof size, construction from scratch and update per block.
 
 Figures at the width of an IEEE column. Blue is the construction of CCS 2025, orange the blind one; line styles
-tell the values of K apart, so the figures also read in black and white. Headers are the ones the papers write (no
-Merkle root over the pointers). With --sections, two more figures give the size of the proof split into D, X and
-Omega (violet, aqua and yellow, each band also labelled): headers of D and X, full blocks of Omega, as both papers
-define it when proof_sections had the block sizes, headers only otherwise (files suffixed -headers).
+tell the values of K apart, so the figures also read in black and white. Headers are counted as both constructions define
+them (no Merkle root over the pointers). With --sections, two more figures give the size of the proof split into D, X and
+Omega (violet, aqua and yellow, each band also labelled): headers of D and X, full blocks of Omega, as both constructions
+define the proof, when proof_sections had the block sizes, headers only otherwise (files suffixed -headers).
 
     python -m figures.blind --build results/build-time.json --runs results/blind --sections results/proof-sections.json
 """
@@ -170,7 +170,7 @@ def _section_rows(sections: dict, height: int) -> dict[tuple[str, int], dict]:
 
 
 VARIANTS = {  # Field of experiments.proof_sections: file suffix, label of Omega, unit, scale.
-    'bytes_full': ('', r'$\Omega$ ($k$ full blocks)', 'MB', 1e6),  # The proof, as both papers define it.
+    'bytes_full': ('', r'$\Omega$ ($k$ full blocks)', 'MB', 1e6),  # The proof, as both constructions define it.
     'bytes': ('-headers', r'$\Omega$ ($k$ headers)', 'MB', 1e6),  # Fallback without block sizes: headers only.
 }
 
@@ -237,6 +237,12 @@ def sections_areas(sections: dict, out: Path, field: str = 'bytes', K: int = 208
 
     Both panels share the y axis, so that the heavier proof shows as heavier; an inset with its own axis zooms on
     the lighter one when it is too thin to read at that scale.
+
+    Args:
+        sections: The output of experiments.proof_sections.
+        out: Directory of the PDF.
+        field: 'bytes' (headers only) or 'bytes_full' (full blocks of Omega).
+        K: The value of K* drawn.
     """
     suffix, _, unit, scale = VARIANTS[field]
     fig, axes = plt.subplots(1, 2, figsize=(style.IEEE_COLUMN, 1.8), layout='constrained', sharey=True)

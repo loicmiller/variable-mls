@@ -1,5 +1,5 @@
 """Size of each part of a NIPoPoW against the height: the abridged subchain D, the uncompressed subchain X and the
-unstable subchain Omega, in blocks and in bytes, for CCS 2025 and for blind mining, headers as the papers write them.
+unstable subchain Omega, in blocks and in bytes, for CCS 2025 and for blind mining, headers as both constructions define them.
 
 The proof at a height is the proof of the chain up to that height. 'bytes' counts headers only. With --block-sizes
 (experiments.block_sizes), 'bytes_full' also counts the full blocks of Omega, which both constructions ship so that
