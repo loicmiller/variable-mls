@@ -1,3 +1,5 @@
+"""The byte model of headers, proofs and Merkle paths (vmls.sizes)."""
+
 from vmls.chain import sha256
 from vmls.sizes import draft_leaves, header_size, merkle_path, merkle_root, n_levels, proof_size, spv_size
 

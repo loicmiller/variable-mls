@@ -1,3 +1,5 @@
+"""The prover and the verifiers on synthetic chains (vmls.nipopow)."""
+
 import numpy as np
 import pytest
 
@@ -11,6 +13,7 @@ P = Params(K=4, k=6, chi=10)
 
 @pytest.fixture(scope='module')
 def chain():
+    """A random chain of 3,000 blocks, shared by the module."""
     return random_chain(3_000, seed=1)
 
 

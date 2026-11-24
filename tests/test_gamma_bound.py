@@ -1,3 +1,5 @@
+"""gamma(s, w) with exact intervals, on simulated chains of known hashrate (vmls.gamma_bound)."""
+
 import numpy as np
 from scipy.stats import binomtest
 

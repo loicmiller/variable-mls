@@ -14,6 +14,7 @@ import argparse
 import json
 import statistics
 import time
+from collections.abc import Callable
 
 import numpy as np
 
@@ -24,7 +25,7 @@ from vmls.sizes import merkle_root, n_levels
 K_VALUES = (104, 208, 416)
 
 
-def timed(function, repetitions: int):
+def timed(function: Callable[[], object], repetitions: int) -> tuple[float, object]:
     """Median time of a call, and its result.
 
     Args:

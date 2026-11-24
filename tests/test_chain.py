@@ -1,3 +1,5 @@
+"""Headers, targets, difficulties and levels, real and blind (vmls.chain)."""
+
 import random
 
 from vmls.chain import GENESIS_LEVEL, GENESIS_TARGET, Block, bits_to_target, blind_level, blocks_from_headers, difficulty, level, make_blind

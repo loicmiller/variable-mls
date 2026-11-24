@@ -24,11 +24,13 @@ OCTOBER_2024_BLOCKS = 865_043  # The headers of the CCS 2025 paper.
 
 @pytest.fixture(scope='module')
 def headers():
+    """The Bitcoin headers (VMLS_HEADERS)."""
     return load_headers(require(HEADERS))
 
 
 @pytest.fixture(scope='module')
 def chains(headers):
+    """The chain with real levels (False) and blind levels (True)."""
     return {blind: blocks_from_headers(headers, blind=blind) for blind in (False, True)}
 
 

@@ -33,6 +33,7 @@ class Chain:
     """
 
     def __init__(self, times: np.ndarray, change_times: np.ndarray, difficulties: np.ndarray):
+        """Sorts the block times and sums the difficulty from the end of the chain."""
         self.times = np.sort(times)
         self.start, self.end = float(self.times[0]), float(self.times[-1])
         self.knots = np.append(change_times, max(self.end, change_times[-1]) + 1.0)
@@ -366,7 +367,8 @@ def summarize(results: list[dict]) -> dict:
     Returns:
         The summary, by window.
     """
-    def spread(values):
+    def spread(values: list[float]) -> dict:
+        """Median, 10th and 90th percentiles of a list of values."""
         return {'median': float(np.median(values)), 'p10': float(np.percentile(values, 10)),
                 'p90': float(np.percentile(values, 90))}
 

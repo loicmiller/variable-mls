@@ -18,15 +18,18 @@ HEADERS = Path(os.environ.get('VMLS_HEADERS', ROOT / 'headers' / 'headers-up-to-
 REFERENCE = Path(os.environ.get('VMLS_REFERENCE', ROOT / 'data' / 'reference'))
 
 
-def pytest_addoption(parser):
+def pytest_addoption(parser: pytest.Parser) -> None:
+    """Adds --runslow."""
     parser.addoption('--runslow', action='store_true', help='Run the regressions on the real chain.')
 
 
-def pytest_configure(config):
+def pytest_configure(config: pytest.Config) -> None:
+    """Declares the slow marker."""
     config.addinivalue_line('markers', 'slow: needs the Bitcoin headers and minutes of computation')
 
 
-def pytest_collection_modifyitems(config, items):
+def pytest_collection_modifyitems(config: pytest.Config, items: list[pytest.Item]) -> None:
+    """Skips the slow tests unless --runslow is given."""
     if config.getoption('--runslow'):
         return
     skip = pytest.mark.skip(reason='needs --runslow')

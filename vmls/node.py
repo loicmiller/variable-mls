@@ -64,6 +64,7 @@ class Node:
     """
 
     def __init__(self, url: str = 'http://127.0.0.1:8332', datadir: str | Path | None = None, timeout: float = 600):
+        """Opens a session authenticated with credentials()."""
         self.url = url
         self.timeout = timeout
         self.session = requests.Session()
