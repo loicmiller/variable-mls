@@ -1,24 +1,26 @@
 # Mining in Logarithmic Space with Variable Difficulty
 
-Code and data of NIPoPoWs (Non-Interactive Proofs of Proof-of-Work) whose blocks are mined at variable difficulty,
-measured on the real Bitcoin header chain.
+NIPoPoWs (Non-Interactive Proofs of Proof-of-Work) for chains whose mining difficulty varies, replayed over the real
+Bitcoin header chain.
 
 A NIPoPoW keeps a logarithmic number of blocks of a proof-of-work chain, sampled by level, so that a light client can
-compare two chains without downloading them. This repository implements the prover and the verifiers, replays them
-over the whole history of Bitcoin, and measures what they cost: proof size, prover and verifier time, and the
-hashrate fluctuation the security proofs assume.
+compare two chains without downloading them. This repository implements the prover and the verifiers of two
+constructions, replays them over the whole history of Bitcoin, and measures what they cost: proof size, prover and
+verifier time, and the Bitcoin parameters the security proofs assume.
 
-Two constructions are implemented: the one of the CCS 2025 paper, and **blind mining**, where the level of a block
-stays hidden until the block is k blocks deep (against targeted block suppression), with a capped Score against
-difficulty manipulation.
+- **CCS 2025** (`ccs2025`): the construction of the CCS 2025 paper. A block's level compares its hash with its own
+  target, and the verifier compares the work of the blocks after the last common block of two proofs.
+- **Our construction** (`ours`): the level of a block stays hidden until the block is k blocks deep (blind mining,
+  against targeted block suppression), and the verifier caps each block's work at v times the median (Score, against
+  difficulty manipulation).
 
 ## Papers
 
-- **CCS 2025.** Loïc Miller, Dorian Pacaud, Nathanaël Derousseaux-Lebert, Emmanuelle Anceaume and Romaric Ludinard.
-  *Mining in Logarithmic Space with Variable Difficulty.* ACM CCS 2025, DOI
-  [10.1145/3719027.3744874](https://doi.org/10.1145/3719027.3744874).
-  The code and data of the paper are tagged [`ccs-2025`](../../tree/ccs-2025); the published figures are in
-  [`paper-figures/ccs-2025/`](paper-figures/ccs-2025). The current code reproduces them (see below).
+**CCS 2025.** Loïc Miller, Dorian Pacaud, Nathanaël Derousseaux-Lebert, Emmanuelle Anceaume and Romaric Ludinard.
+*Mining in Logarithmic Space with Variable Difficulty.* ACM CCS 2025, DOI
+[10.1145/3719027.3744874](https://doi.org/10.1145/3719027.3744874). The code and data of the paper are tagged
+[`ccs-2025`](../../tree/ccs-2025); the published figures are in [`paper-figures/ccs-2025/`](paper-figures/ccs-2025).
+The CCS 2025 construction of this version gives the same levels and the same proofs, block for block (see Tests).
 
 ## Install
 
@@ -27,110 +29,110 @@ Python 3.12 or later.
 ```bash
 python3 -m venv ~/.venvs/vmls
 ~/.venvs/vmls/bin/pip install -e '.[dev]'
+~/.venvs/vmls/bin/vmls --help
 ~/.venvs/vmls/bin/python -m pytest        # fast tests, on synthetic chains
 ```
 
-## Layout
-
-| Path | Content |
-|---|---|
-| `vmls/` | The library: `chain` (headers, levels), `nipopow` (prover, verifiers), `synthetic`, `sizes` (byte model), `cost` (hashing work), `gamma` and `gamma_bound` (hashrate fluctuation), `node` (Bitcoin Core RPC), `style` (figures) |
-| `experiments/` | One command per measurement; each writes JSON or NPZ files to `results/` |
-| `figures/` | One script per set of figures, reading those results and writing PDFs to `out/` |
-| `tests/` | Fast tests on synthetic chains; regressions on the real chain with `--runslow` |
-| `headers/headers.zip` | The 865,043 Bitcoin headers of the CCS 2025 paper (up to October 11, 2024) |
-| `paper-figures/` | The figures as published |
-
-`results/`, `out/` and `data/` are not tracked. `rpc.env.example` shows the RPC credentials file (see Bitcoin data).
-
 ## How it fits together
 
-```
-headers (JSON or zip) ── vmls.chain.blocks_from_headers ──> list[Block], each with its level
-                                                              │
-     prover:  vmls.nipopow.compress, called once per new block (Dissolve, then keep D, X and Omega)
-                                                              │
-   verifier:  vmls.cost.validate_proof, then vmls.nipopow.compare_published (CCS 2025)
-              or compare_blind (blind: level 0, else the Score capped by v, else the online test, not waited for)
-                                                              │
-   measures:  vmls.sizes (bytes of headers and proofs), vmls.cost (timings), vmls.gamma* (hashrate fluctuation)
-                                                              │
-experiments/<name>.py ──> results/*.json, *.npz ──> figures/<name>.py ──> out/*.pdf
-```
+![The modules of vmls and what flows between them](docs/figures/architecture.svg)
 
-- **Levels.** Under CCS 2025, a block's level is the number of times its hash beats its own target (`level`).
-  Under blind mining, it comes from a nonce `ctr` committed in the header and revealed k blocks later
-  (`blind_level`). Bitcoin headers have no such nonce: `simulated_nonce` derives one from the block hash, so blind
-  levels follow the distribution of a blind-mined chain and runs are reproducible. This is the main assumption of the
-  measurements.
-- **Parameters** (`vmls.nipopow.Params`): `K` (K* in the papers), a level enters the proof once it holds 2K blocks;
-  `k = 323`, the length of the unstable suffix Omega, kept as full blocks; `chi = 4032`, the length of X, kept
-  uncompressed for the difficulty checks. D holds the sampled blocks below them.
-- **Schemes** (`vmls.sizes.SCHEMES`), the byte models the measurements compare:
+- **chain** reads exported headers into blocks, each with its work (Bitcoin's chain work) and its level under a
+  construction. Under CCS 2025, the largest μ with hash · 2^μ ≤ target. Under ours, the number of leading zero bits
+  of H(ctr, y), y the proof-of-work hash and ctr a nonce committed in the header as H(ctr); a block whose nonce is never
+  revealed has level 0. **Bitcoin headers carry no committed nonce: each block gets one derived from its hash**, so
+  that levels follow the distribution of a chain mined that way and runs are reproducible. This is the main assumption
+  of the measurements.
+- **proof** is the prover (Algorithm 1 of the papers), the same for both constructions.
+- **encoding** writes each header, and **verify** reads them back to check a proof, then compares two.
+- **measure** runs the measurements, **gamma** estimates the hashrate fluctuation, **node** talks to Bitcoin Core,
+  **figures** draws the results, **cli** is the command line.
 
-  | Scheme | Construction | Header |
-  |---|---|---|
-  | `ccs` | CCS 2025 | the 80-byte Bitcoin header plus one pointer per level |
-  | `draft` | blind mining | the header plus the commitment H(ctr), k pointers and a tuple per level |
-  | `ccs-merkle`, `draft-merkle` | the same | pointers and tuples replaced by a Merkle root (a possible optimisation) |
+### A proof
 
-  `experiments.proof_over_chain --mode ccs` measures `ccs` and `ccs-merkle`; `--mode blind`, `draft` and
-  `draft-merkle`.
-- **Tests.** `tests/` runs every piece on synthetic chains (`vmls.synthetic`); the slow regressions replay the real
-  chain and compare proofs, block by block, with those of version 1.
+![A small chain and its proof: D, X and Omega](docs/figures/proof-anatomy.svg)
 
-## Reproduce the CCS 2025 figures
+A proof keeps three parts of the chain (`vmls.proof.Params`):
 
-```bash
-python -m experiments.proof_over_chain --mode ccs --headers headers/headers.zip -K 208 --stop 865043 --no-verifier
-python -m figures.ccs2025 --headers headers/headers.zip --run results/<stamp>-proof-over-chain-ccs-up-to-865042-K-208-chi-4032-k-323
-```
+- **Ω**, the last k blocks, kept whole (k = 6, Bitcoin's common prefix);
+- **X**, the χ = 2m = 4032 headers before them, so that a miner can recompute the next target;
+- **D**, sampled from the rest: at the proof level ℓ, every ℓ-block; at each level μ below, the last 2K μ-blocks and
+  every μ-block after the K-th last (μ+1)-block. K is K\* in the papers.
 
-The replay takes about 15 minutes on one core. The proof ends with 7,075 blocks at level 11, as in the paper.
-Latencies depend on the machine.
+A proof is itself a chain: a prover updates it by compressing it with each new block, without ever holding the chain.
 
-## Other measurements
+### A header
+
+![One header field by field, under each construction](docs/figures/header-layout.svg)
+
+`vmls.encoding` writes the bytes of each header, and `header_size` gives their length by formula (a test checks that
+both agree at every height). Under CCS 2025, the 80-byte Bitcoin header and an interlink: one pointer per level μ to
+the last μ-block before the block. Under ours, the 4-byte nonce becomes H(ctr); k − 1 pointers to the predecessors
+besides the previous hash; and per level a tuple (H(b1), ctr1, H(b2), ctr2) for the last two revealed μ-blocks, whose
+H(b2) is the interlink. The exports hold the hash, bits and time of each block but not its version, Merkle root and
+nonce: those fields are zero, while every pointer holds the real hash of the block it designates, so that the verifier
+can check that each proof is linked.
+
+## Usage
+
+![The commands of a measurement campaign](docs/figures/usage.svg)
 
 ```bash
-python -m experiments.proof_over_chain --mode blind --headers HEADERS -K 208   # blind mining, with verifier timings
-python -m experiments.build_time --headers HEADERS --out results/build-time.json   # building a proof from scratch
-python -m experiments.block_sizes --datadir ~/.bitcoin --headers HEADERS --out results/block-sizes.npy
-python -m experiments.proof_sections --headers HEADERS --block-sizes results/block-sizes.npy --out results/sections.json
-python -m experiments.gamma estimate HEADERS --out results/gamma               # gamma as the original notebook estimates it
-python -m experiments.gamma bound HEADERS --out results/gamma-bound            # gamma(s, w) with exact intervals
-python -m experiments.gamma simulate --out results/gamma-simulation.json      # estimators against known hashrate paths
-python -m experiments.attack_probability --headers HEADERS --out results/attack.json
-python -m experiments.show_proof --random 60 --seed 1 -K 2 -k 2 -chi 9 --out out/proof.pdf
+vmls export --datadir ~/.bitcoin --reference headers/headers.zip       # headers of a synced node -> headers/
+vmls block-sizes --datadir ~/.bitcoin --headers H                      # size of every block (stopped node)
+vmls replay --construction ours --headers H -K 208                     # proof grown block by block, verifier
+vmls build-time --headers H                                            # proof built from scratch, by height
+vmls sections --headers H --block-sizes results/block-sizes.npy        # size of D, X and Omega, by height
+vmls gamma classic --headers H --since 2020-01-01                      # hashrate fluctuation, recent period
+vmls kstar --headers H                                                 # K* the security bound asks for
+vmls attack --headers H                                                # zero-difficulty attack over time
+vmls figures --results results --out-dir out                           # every figure the results allow
 ```
+
+`H` is a headers file (`.json`, `.json.xz`, or the `.zip` of this repository). Each result is a JSON file holding the
+command, the version and the date, and it is never overwritten; `vmls replay` also writes the per-block series as NPZ.
+The constructions default to both, K to {104, 208, 416} and k to 6. Timings run on one thread.
+
+## Comparing with CCS 2025
+
+Every measurement runs both constructions on the same chain, and every figure draws both. To check the CCS 2025
+construction against the code of the paper, the slow tests compare the levels of all 865,043 blocks and the proof sizes
+and levels of the paper's data (K = 104 and 208, k = 323). To redraw the paper's figures exactly, use the tag
+`ccs-2025`.
+
+## Tests
+
+```bash
+python -m pytest              # synthetic chains: properties of the prover, every tampering the verifier must catch,
+                              # the zero-difficulty attack, header sizes, the command line (about a minute)
+python -m pytest --runslow    # also the regressions on Bitcoin (a few minutes)
+```
+
+The slow tests need the headers and reference data, kept outside the repository: `VMLS_HEADERS` points to a headers
+export and `VMLS_REFERENCE` to the reference directory (see `tests/conftest.py`); they are skipped when missing.
 
 ## Bitcoin data
 
-`headers/headers.zip` holds the headers used by the CCS 2025 paper. To extend them, run a synced Bitcoin Core node
-and export its headers; the export checks that the chain is contiguous down to the genesis block and that it extends
-the previous export:
-
-```bash
-python -m experiments.export_headers --datadir ~/.bitcoin --reference headers/headers.zip --out-dir headers
-```
-
-The size of every block (`experiments.block_sizes`) is read from a stopped node's block files, a few minutes. The
-size of the UTXO set at every height, which a NIPoPoW must carry, comes from a full replay of the blocks
-(`experiments/utxo_snapshot.py`, days and some 80 GB); at the tip alone, the node gives it directly
-(`bitcoin-cli gettxoutsetinfo`).
+`headers/headers.zip` holds the 865,043 headers used by the CCS 2025 paper (up to October 11, 2024). To extend them,
+run a synced Bitcoin Core node and `vmls export`: it checks that the chain is contiguous down to the genesis block and
+extends the previous export. `vmls block-sizes` reads the size of every block from a stopped node's block files, in a
+few minutes; `vmls utxo` asks a running node for the size of the UTXO set at the tip.
 
 RPC credentials never go in the repository: the client reads the node's cookie, then `~/.config/vmls/rpc.env`
-(`VMLS_RPC_USER=…` and `VMLS_RPC_PASSWORD=…`, readable by you only), then the environment variables of the same names.
+(`VMLS_RPC_USER=…` and `VMLS_RPC_PASSWORD=…`, readable by you only; see `rpc.env.example`), then the environment
+variables of the same names.
 
 ## History
 
-- **Version 2** (in progress): the package `vmls`, one command per measurement, tests and CI. See
+- **Version 2** (in progress): written anew as the package `vmls` and the command `vmls`. See
   [CHANGELOG.md](CHANGELOG.md).
 - **Version 1.0.0** (2025-04-25, tags `v1.0.0` and `ccs-2025`): the code and data of the CCS 2025 paper.
 
 ## Citing
 
-The code is by Loïc Miller; the construction it implements is the work of all the authors of the CCS 2025 paper.
-Cite that paper, and the version of this code you used; [CITATION.cff](CITATION.cff) holds both.
+The code is by Loïc Miller. The CCS 2025 construction is the work of all the authors of the CCS 2025 paper, and our
+construction of the authors of the paper that describes it. Cite the paper, and the version of this code you used;
+[CITATION.cff](CITATION.cff) holds both.
 
 ## Security
 

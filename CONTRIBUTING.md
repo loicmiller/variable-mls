@@ -12,7 +12,7 @@ python3 -m venv ~/.venvs/vmls
 ## Tests
 
 ```bash
-python -m pytest              # fast tests, on synthetic chains (under a second)
+python -m pytest              # fast tests, on synthetic chains (about a minute)
 python -m pytest --runslow    # also the regressions on the real chain (a few minutes)
 ```
 
@@ -24,9 +24,10 @@ macOS, with Python 3.12 and 3.14, at every push.
 ## Rules
 
 - Small, readable changes; Google-style docstrings (Args, Returns, Raises) and type hints; no dead code.
-- One command per measurement in `experiments/`, writing JSON or NPZ to `results/`; one script per set of figures in
-  `figures/`, reading those results and writing PDFs to `out/`. Every number a paper quotes comes from a result file.
-- Figures are drawn at the width they are printed, with the style of `vmls/style.py`.
+- One subcommand of `vmls` per measurement (`vmls/cli.py` parses, `vmls/measure.py` measures), writing JSON or NPZ to
+  `results/`; `vmls figures` reads them and writes PDFs to `out/`. Every number a paper quotes comes from a result
+  file. The figures of the README come from `docs/make_figures.py`: run it after a change to what they show.
+- Figures are drawn at the width they are printed, with the style of `vmls/figures.py`.
 - Nothing personal or secret in the repository: no credentials, no paths of a machine, no data files. Version 1's
   notebooks were committed with their outputs, which printed the paths of the machine they ran on: clear outputs
   before committing a notebook, and print paths relative to the repository. `tests/test_repository.py` fails on a

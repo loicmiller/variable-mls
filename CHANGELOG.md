@@ -6,43 +6,52 @@ All notable changes to this project are listed here. The format follows
 
 ## [Unreleased]
 
-Version 2: the code rewritten as a Python package, with one command per measurement. It reproduces the proofs of
-version 1 block for block (K = 104 and 208, regression tests against the dumps of the CCS 2025 code).
+Version 2, written anew: one package of nine modules and one command, `vmls`. Its CCS 2025 construction gives, block
+for block, what the code of the CCS 2025 paper gave (levels of the 865,043 blocks, proof sizes and levels of its data
+at K = 104 and 208, k = 323), and our construction the proofs of the earlier rewrite.
 
 ### Breaking changes
 
-- The scripts of `src/` and the notebooks of `analysis/` are replaced by the package `vmls/`, the commands of
-  `experiments/` and the scripts of `figures/`. Commands become `python -m experiments.<name>`; results go to
+- The scripts of `src/` and the notebooks of `analysis/` are gone, as are the `experiments/` and `figures/` scripts
+  of the earlier rewrite: every measurement and figure is a subcommand of `vmls` (`vmls --help`). Results go to
   `results/` and figures to `out/`, neither tracked. Version 1 stays available under the tags `v1.0.0` and `ccs-2025`.
+- The constructions are named `ccs2025` and `ours` (formerly `ccs` and `draft` or `blind`); figures say
+  « Our construction ».
+- The common prefix parameter k defaults to 6, Bitcoin's (323 was a numerical application of the backbone analysis).
+- Levels under CCS 2025 are computed in exact integers, and work is Bitcoin's chain work (formerly floats, and a
+  difficulty rounded to four decimals). On Bitcoin, no level changes.
 - RPC credentials are no longer read from the code: the client uses the node's cookie, then
   `~/.config/vmls/rpc.env`, then the variables `VMLS_RPC_USER` and `VMLS_RPC_PASSWORD`.
 - Python 3.12 or later.
 
 ### Added
 
-- Blind mining: blind levels from a committed nonce, revealed k blocks deep; `compare_blind` with the capped Score.
-- `experiments.proof_over_chain`: the proof grown block by block over the whole chain, with the update time, the size
-  in blocks and in bytes, and the verifier's time on forks near the tip and deep in the chain.
-- `experiments.build_time`: the time to build a proof from scratch at many heights, step by step.
-- `experiments.proof_sections`: the size of each part of a proof (D, X, Ω) against the height; with
-  `experiments.block_sizes`, which reads the size of every block from a stopped node's block files, the full blocks
-  of Ω.
-- `experiments.export_headers`, which checks that an export is contiguous down to the genesis block and extends the
-  previous one.
-- `experiments.gamma`: the hashrate fluctuation γ as the original notebook estimates it, and γ(s, w) with exact
-  confidence intervals; `experiments.attack_probability`; `experiments.show_proof`.
-- The byte model of headers and proofs (`vmls.sizes`), with and without a Merkle root over the pointers.
-- The published figures of the CCS 2025 paper in `paper-figures/ccs-2025/`, and `figures.ccs2025` to redraw them.
-- `figures.blind`: proof size, construction from scratch and update per block, blind mining against CCS 2025.
-- Tests on synthetic chains, regressions on the real chain (`--runslow`), a check that no tracked file holds the path
-  of a machine, and CI on Linux, Windows and macOS with Python 3.12 and 3.14.
-- `rpc.env.example`, the RPC credentials file, and lower bounds for the dependencies (the versions the regressions
-  were checked with).
+- Our construction: levels from a nonce committed in the header and revealed k blocks deep (a block never revealed
+  has level 0), and the verifier with the capped Score (`compare_ours`).
+- Real headers (`vmls.encoding`): the bytes of each header, field by field, with the real hashes its pointers
+  designate; the verifier reads them and checks that each proof is linked. The size formula is checked against them;
+  the earlier byte model counted one pointer too many per header of our construction (32 bytes).
+- `vmls replay`: a proof grown block by block over the whole chain, with the update time, the size of each part and
+  the verifier's time, with real headers and by formula, on forks near the tip and deep in the chain.
+- `vmls build-time`, `vmls sections` (with `vmls block-sizes`, the full blocks of Omega), `vmls kstar` (the K* the
+  security bound asks for on Bitcoin), `vmls attack`, `vmls gamma classic|bound` (with `--since` for a recent
+  period), `vmls export`, `vmls utxo`, `vmls figures`.
+- The figures of the README, drawn from the code by `docs/make_figures.py`.
+- The published figures of the CCS 2025 paper in `paper-figures/ccs-2025/`.
+- Tests: properties of the prover on hundreds of synthetic chains, every tampering the verifier must catch, the
+  zero-difficulty attack (it beats CCS 2025, not ours), regressions on the real chain (`--runslow`), no machine path
+  and no venue under review in the repository, CI on Linux, Windows and macOS with Python 3.12 and 3.14.
+- `rpc.env.example`, and lower bounds for the dependencies (the versions the regressions were checked with).
+
+### Removed
+
+- The Merkle-root variants of the headers, the drawing of a proof (now a figure of the README), the full replay of
+  the UTXO set (`vmls utxo` asks the node for the tip), the redrawing of the CCS 2025 figures (see the tag).
 
 ### Fixed
 
-- The verifier follows the published Compare rule (`compare_published`): the code of version 1 counted the blocks
-  of X and Ω whatever their level.
+- The verifier follows the published Compare rule (`compare_ccs`): the code of version 1 counted the blocks of X
+  and Omega whatever their level.
 
 ### Security
 
