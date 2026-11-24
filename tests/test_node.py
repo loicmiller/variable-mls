@@ -61,3 +61,46 @@ def test_block_files_are_read_with_their_xor_key(tmp_path):
     (blocks_dir / 'blk00000.dat').write_bytes(bytes(b ^ key[i % 8] for i, b in enumerate(records)))
     headers.append({'hash': '00' * 32, 'bits': '1d00ffff', 'time': 3})  # Not in the files.
     assert block_sizes(tmp_path, headers, threads=2).tolist() == [200, 380, 170, -1]
+
+
+class FakeNode:
+    """A node that answers from a list of headers, as Bitcoin Core's RPC does."""
+
+    def __init__(self, headers, syncing=False, broken_at=None):
+        self.headers, self.syncing, self.broken_at = headers, syncing, broken_at
+
+    def call(self, method, *params):
+        assert method == 'getblockchaininfo'
+        return {'initialblockdownload': self.syncing, 'blocks': len(self.headers) - 1, 'headers': len(self.headers) - 1}
+
+    def batch(self, method, params_list):
+        if method == 'getblockhash':
+            return [self.headers[h]['hash'] for (h,) in params_list]
+        by_hash = {h['hash']: i for i, h in enumerate(self.headers)}
+        out = []
+        for (block_hash,) in params_list:
+            i = by_hash[block_hash]
+            previous = self.headers[i - 1]['hash'] if i else None
+            if i == self.broken_at:
+                previous = '11' * 32
+            out.append({**self.headers[i], 'height': i, 'previousblockhash': previous})
+        return out
+
+
+def node_headers(n):
+    from vmls.node import GENESIS_HASH
+    return [{'hash': GENESIS_HASH if i == 0 else f'{i:064x}', 'bits': '1d00ffff', 'time': i} for i in range(n)]
+
+
+def test_export_leaves_out_the_last_blocks():
+    from vmls.node import export_headers
+    headers = node_headers(20)
+    assert export_headers(FakeNode(headers), margin=6) == headers[:14]  # Tip 19: heights 0 to 13.
+
+
+def test_export_refuses_a_syncing_node_and_a_broken_chain():
+    from vmls.node import export_headers
+    with pytest.raises(RuntimeError):
+        export_headers(FakeNode(node_headers(20), syncing=True))
+    with pytest.raises(ValueError, match='breaks at height 7'):
+        export_headers(FakeNode(node_headers(20), broken_at=7))

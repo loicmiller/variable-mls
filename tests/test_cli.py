@@ -60,3 +60,9 @@ def test_kstar(headers_file, tmp_path):
     k = result(tmp_path / 'kstar.json')
     assert k['levels'][0]['spread_recent'] == 1.0  # One target throughout.
     assert k['epsilon'][0]['adversary_share'] < k['adversary_share_limit'] < 0.5
+
+
+def test_gamma_classic_recent(headers_file, tmp_path):
+    main(['gamma', 'classic', '--headers', str(headers_file), '--since', '2020-01-02', '--out', str(tmp_path / 'g.json')])
+    rows = result(tmp_path / 'g.json')['rows']
+    assert rows and all(row['s'] > 0 for row in rows)

@@ -15,7 +15,7 @@ keywords = ["NIPoPoW", "proof of work", "light client", "Bitcoin", "variable dif
 dependencies = ["numpy>=2.5", "pandas>=3.1", "matplotlib>=3.11", "scipy>=1.18", "requests>=2.34"]
 
 [project.optional-dependencies]
-dev = ["pytest>=9.2"]
+dev = ["pytest>=9.2", "pytest-cov>=7.1"]
 
 [project.scripts]
 vmls = "vmls.cli:main"

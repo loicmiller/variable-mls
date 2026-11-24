@@ -14,7 +14,11 @@ python3 -m venv ~/.venvs/vmls
 ```bash
 python -m pytest              # fast tests, on synthetic chains (about a minute)
 python -m pytest --runslow    # also the regressions on the real chain (a few minutes)
+python -m pytest --cov=vmls --cov-branch --cov-report=term-missing   # branch coverage
 ```
+
+The fast tests cover about 85 % of the branches. What they leave is either covered by the slow tests (gamma(s, w) on
+the real chain) or needs a live node (the RPC session in `vmls.node`, the `export` and `utxo` commands).
 
 The slow tests need the Bitcoin headers and the reference data, kept outside the repository; they are skipped when
 missing. `VMLS_HEADERS` points to a headers export (default `headers/headers-up-to-974505.json`) and
