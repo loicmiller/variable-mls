@@ -1,15 +1,15 @@
-"""NIPoPoWs with variable mining difficulty, measured on the Bitcoin header chain.
+"""NIPoPoWs with variable mining difficulty, replayed over the Bitcoin header chain.
 
 Modules:
-    chain: headers, blocks, difficulties and levels (real and blind).
-    nipopow: the prover (Dissolve, Compress) and the verifier rules.
-    synthetic: synthetic chains and competing proofs.
-    sizes: the byte model of headers, proofs and Merkle paths.
-    cost: the hashing work of a prover and a verifier.
-    gamma: the hashrate fluctuation gamma, as the gamma notebook estimates it.
-    gamma_bound: gamma(s, w), a worst case with exact confidence intervals.
-    node: reading headers from a Bitcoin Core node.
-    style: the look of the figures.
+    chain: blocks, their work and their level under each construction; synthetic chains and forks.
+    proof: the prover, Dissolve and Compress.
+    encoding: the bytes of each header, and the formula of their length.
+    verify: the verifier, its checks and the comparison rules of both constructions.
+    measure: the measurements on Bitcoin.
+    gamma: the hashrate fluctuation gamma.
+    node: headers, block sizes and the UTXO set of a Bitcoin Core node.
+    figures: the figures, at the width of a paper column.
+    cli: the command line.
 """
 
 __version__ = '2.0.0.dev0'
