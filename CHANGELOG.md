@@ -43,6 +43,8 @@ at K = 104 and 208, k = 323), and our construction the proofs of the earlier rew
   chain and holds O(K) blocks per level; `vmls build-time` times it beside levels-then-Compress and checks that both
   give the same proof. Both hash every header, as an update does.
 - `vmls figures --timings`: the update and build times of runs made alone replace those of the main results.
+- The headers up to height 977,192 (`headers/headers-up-to-977192.json.xz`) and the size of each of these blocks
+  (`data/block-sizes-977192.npy`), on which the measurements of version 2 run.
 - The figures of the README, drawn from the code by `docs/make_figures.py`.
 - The published figures of the CCS 2025 paper in `paper-figures/ccs-2025/`.
 - Tests: properties of the prover on hundreds of synthetic chains, every tampering the verifier must catch, the

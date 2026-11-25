@@ -1,11 +1,13 @@
-"""Shared settings: slow tests need the Bitcoin headers and reference data, and are skipped without them.
+"""Shared settings: slow tests run on the Bitcoin headers; those that need reference data are skipped without it.
 
     pytest                     # fast tests, synthetic data only
     pytest --runslow           # also the regressions on the real chain
 
 Data locations, overridable by environment variables:
-    VMLS_HEADERS     headers file (default headers/headers-up-to-974505.json)
-    VMLS_REFERENCE   reference directory (default data/reference)
+    VMLS_HEADERS     headers file (default headers/headers-up-to-977192.json.xz, in the repository)
+    VMLS_REFERENCE   reference directory (default data/reference, kept outside the repository)
+
+The gamma(s, w) regression was measured on the headers up to 974,505: it runs with VMLS_HEADERS set to that export.
 """
 
 import os
@@ -14,7 +16,7 @@ from pathlib import Path
 import pytest
 
 ROOT = Path(__file__).resolve().parent.parent
-HEADERS = Path(os.environ.get('VMLS_HEADERS', ROOT / 'headers' / 'headers-up-to-974505.json'))
+HEADERS = Path(os.environ.get('VMLS_HEADERS', ROOT / 'headers' / 'headers-up-to-977192.json.xz'))
 REFERENCE = Path(os.environ.get('VMLS_REFERENCE', ROOT / 'data' / 'reference'))
 
 

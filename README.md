@@ -90,8 +90,9 @@ vmls attack --headers H                                                # zero-di
 vmls figures --results results --out-dir out                           # every figure the results allow
 ```
 
-`H` is a headers file (`.json`, `.json.xz`, or the `.zip` of this repository). Each result is a JSON file holding the
-command, the version and the date, and it is never overwritten; `vmls replay` also writes the per-block series as NPZ.
+`H` is a headers file (`.json`, `.json.xz` or `.zip`): `headers/headers-up-to-977192.json.xz` for the measurements of
+version 2, with `data/block-sizes-977192.npy` for `vmls sections`. Each result is a JSON file holding the command, the
+version and the date, and it is never overwritten; `vmls replay` also writes the per-block series as NPZ.
 The constructions default to both, K to {104, 208, 416} and k to 6. Timings run on one thread.
 
 The provers hash every header they read. The verifier checks that a proof starts at the genesis block, that each block
@@ -115,15 +116,18 @@ python -m pytest              # synthetic chains: properties of the prover, ever
 python -m pytest --runslow    # also the regressions on Bitcoin (a few minutes)
 ```
 
-The slow tests need the headers and reference data, kept outside the repository: `VMLS_HEADERS` points to a headers
-export and `VMLS_REFERENCE` to the reference directory (see `tests/conftest.py`); they are skipped when missing.
+The slow tests run on `headers/headers-up-to-977192.json.xz` (`VMLS_HEADERS` selects another export). Those that
+compare with reference data, kept outside the repository (`VMLS_REFERENCE`, see `tests/conftest.py`), are skipped
+without it.
 
 ## Bitcoin data
 
-`headers/headers.zip` holds the 865,043 headers used by the CCS 2025 paper (up to October 11, 2024). To extend them,
-run a synced Bitcoin Core node and `vmls export`: it checks that the chain is contiguous down to the genesis block and
-extends the previous export. `vmls block-sizes` reads the size of every block from a stopped node's block files, in a
-few minutes; `vmls utxo` asks a running node for the size of the UTXO set at the tip.
+`headers/headers.zip` holds the 865,043 headers used by the CCS 2025 paper (up to October 11, 2024), and
+`headers/headers-up-to-977192.json.xz` the 977,193 headers of the measurements of version 2 (up to November 23, 2026),
+with the size of each of these blocks in `data/block-sizes-977192.npy`. To extend them, run a synced Bitcoin Core node
+and `vmls export`: it checks that the chain is contiguous down to the genesis block and extends the previous export.
+`vmls block-sizes` reads the size of every block from a stopped node's block files, in a few minutes; `vmls utxo` asks
+a running node for the size of the UTXO set at the tip.
 
 RPC credentials never go in the repository: the client reads the node's cookie, then `~/.config/vmls/rpc.env`
 (`VMLS_RPC_USER=…` and `VMLS_RPC_PASSWORD=…`, readable by you only; see `rpc.env.example`), then the environment
