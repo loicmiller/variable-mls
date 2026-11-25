@@ -3,7 +3,7 @@ message: >-
   The code is by Loïc Miller. It implements and measures the construction of the paper below, by Loïc Miller,
   Dorian Pacaud, Nathanaël Derousseaux-Lebert, Emmanuelle Anceaume and Romaric Ludinard: please cite that paper,
   and the version of the code you used.
-title: "variable-mls: NIPoPoWs with variable mining difficulty, measured on the Bitcoin header chain"
+title: "vmls: NIPoPoWs with variable mining difficulty, measured on the Bitcoin header chain"
 type: software
 authors:
   - family-names: Miller
@@ -11,7 +11,7 @@ authors:
 license: MIT
 version: 1.0.0
 date-released: 2025-04-25
-repository-code: "https://github.com/loicmiller/variable-mls"
+repository-code: "https://github.com/loicmiller/vmls"
 keywords:
   - NIPoPoW
   - proof of work

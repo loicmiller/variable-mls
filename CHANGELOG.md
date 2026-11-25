@@ -74,5 +74,5 @@ The code and data of the CCS 2025 paper *Mining in Logarithmic Space with Variab
 verifier replayed over the 865,043 Bitcoin headers up to October 11, 2024, and the notebooks that draw the paper's
 figures. Same commit as the tag `ccs-2025`.
 
-[Unreleased]: https://github.com/loicmiller/variable-mls/compare/v1.0.0...HEAD
-[1.0.0]: https://github.com/loicmiller/variable-mls/releases/tag/v1.0.0
+[Unreleased]: https://github.com/loicmiller/vmls/compare/v1.0.0...HEAD
+[1.0.0]: https://github.com/loicmiller/vmls/releases/tag/v1.0.0
