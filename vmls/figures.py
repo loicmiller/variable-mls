@@ -1,8 +1,9 @@
 """The figures, drawn from the JSON and NPZ files of results/, at the width of a paper column.
 
-Fonts are at their printed size (8 pt labels, 7 pt ticks and legends), in a serif family. Blue is CCS 2025, orange
-our construction (a pair validated for colour vision deficiencies); line styles tell the values of K apart, so every
-figure also reads in black and white. draw_all draws whatever the results allow and writes numbers.json, the figures'
+Fonts are at their printed size (8 pt labels, 7 pt ticks and legends), in a serif family. Colour names the construction
+(blue CCS 2025, orange ours) and line style the value of K (dotted 104, solid 208, dashed 416), in every figure, so
+that each also reads in black and white; markers sit only on sparse measured points. The parts of a proof (D, X, Omega)
+take three other hues, and never share a figure with the two of the constructions, which are then split into panels. draw_all draws whatever the results allow and writes numbers.json, the figures'
 numbers that a text quotes.
 
     vmls figures --results results --out-dir out
@@ -19,7 +20,11 @@ import numpy as np  # noqa: E402
 
 COLUMN = 3.5  # Inches: one IEEE column.
 BLUE, ORANGE, GRAY = '#2a78d6', '#eb6834', '#52514e'
-PART_COLOURS = {'D': '#8f6fd1', 'X': '#4fb3bf', 'Omega': '#e3b23c'}  # Violet, aqua, yellow; each band also labelled.
+# Violet, aqua, yellow. Each palette passes the dataviz validator alone (--pairs all, light surface): the constructions
+# with CVD ΔE 24.7, the parts with 9.1; together they would not, so they never share a figure.
+PART_COLOURS = {'D': '#6250d6', 'X': '#1baf7a', 'Omega': '#eda100'}
+PART_NAMES = {'D': 'D (sampled headers)', 'X': 'X ($\\chi$ headers)', 'Omega': '$\\Omega$ ($k$ full blocks)'}
+PART_INK = {'D': 'white', 'X': '#1a1a19', 'Omega': '#1a1a19'}  # Label inside each band.
 NAMES = {'ccs2025': 'CCS 2025', 'ours': 'Our construction'}
 COLOURS = {'ccs2025': BLUE, 'ours': ORANGE}
 K_STYLE = {104: ':', 208: '-', 416: '--'}
@@ -79,7 +84,9 @@ def time_figure(build: list[dict], runs: dict, out: Path) -> Path:
     for construction in NAMES:
         rows = sorted((r for r in build if r['construction'] == construction and r['K'] == 208), key=lambda r: r['height'])
         if rows:
-            left.plot([r['height'] for r in rows], [r['total_s'] for r in rows], color=COLOURS[construction])
+            left.plot([r['height'] for r in rows], [r.get('one_pass_s', r['total_s']) for r in rows],
+                      color=COLOURS[construction], linewidth=1.0, marker='o', markersize=3,
+                      markeredgewidth=0)  # The measured heights; a ring would cut the line into dashes (K = 416).
         for (c, K), (_, series) in sorted(runs.items()):
             if c == construction and K in K_STYLE:
                 us = series['update_us'].astype(float)
@@ -100,10 +107,15 @@ def time_figure(build: list[dict], runs: dict, out: Path) -> Path:
 
 
 def size_figure(runs: dict, out: Path) -> Path:
-    """The number of blocks in the proof against the height, for each construction and K."""
+    """The number of blocks in the proof against the height (median over each epoch), for each construction and K."""
     fig, ax = plt.subplots(figsize=(COLUMN, 1.8), layout='constrained')
     for (construction, K), (_, series) in sorted(runs.items()):
-        ax.plot(series['proof_blocks'], color=COLOURS[construction], linestyle=K_STYLE.get(K, '-'), linewidth=0.9)
+        if construction == 'ccs2025' and K != 208 and ('ours', K) in runs:
+            continue  # CCS 2025 coincides with ours at every K: one value of K shows it (the caption says so).
+        blocks = series['proof_blocks'].astype(float)
+        epochs = len(blocks) // EPOCH  # Per block, the jitter would hide the line styles.
+        ax.plot(np.arange(epochs) * EPOCH, np.median(blocks[:epochs * EPOCH].reshape(epochs, EPOCH), axis=1),
+                color=COLOURS[construction], linestyle=K_STYLE.get(K, '-'), linewidth=0.9)
     ax.set_ylabel('Blocks in the proof')
     _height_axis(ax)
     _legend(fig, sorted({K for _, K in runs if K in K_STYLE}))
@@ -119,30 +131,43 @@ def sections_figure(sections: dict, out: Path, K: int = 208, log: bool = False) 
     Args:
         sections: The result of vmls sections.
         out: Directory of the PDF.
-        K: The value of K drawn.
+        K: The value of K drawn, or the smallest one measured if it was not.
         log: Draw each part as a line on a log axis instead of stacked bands, so that small parts stay visible.
 
     Returns:
         The path written.
     """
-    fig, axes = plt.subplots(1, 2, figsize=(COLUMN, 1.8), layout='constrained', sharey=True)
+    measured = {r['K'] for r in sections['rows']}
+    K = K if K in measured else min(measured)  # A run without K = 208 (tests, other chains) draws its smallest K.
+    fig, axes = plt.subplots(1, 2, figsize=(COLUMN, 1.9), layout='constrained', sharey=True)
+    bands = {}
     for ax, construction in zip(axes, NAMES):
         rows = sorted((r for r in sections['rows'] if r['construction'] == construction and r['K'] == K),
                       key=lambda r: r['height'])
-        x = [r['height'] for r in rows]
+        x = np.array([r['height'] for r in rows])
         ys = {part: np.array([r['bytes'][part] / 1e6 for r in rows]) for part in PART_COLOURS}
         if log:
             for part, y in ys.items():
-                ax.plot(x, y, color=PART_COLOURS[part], label=part.replace('Omega', '$\\Omega$'))
+                ax.plot(x, y, color=PART_COLOURS[part], label=PART_NAMES[part])
             ax.set_yscale('log')
+            ax.yaxis.set_major_formatter(plt.FuncFormatter(lambda y, _: f'{y:g}'))
         else:
-            ax.stackplot(x, *ys.values(), colors=list(PART_COLOURS.values()), linewidth=0,
-                         labels=[p.replace('Omega', '$\\Omega$') for p in PART_COLOURS])
-        ax.set_title(NAMES[construction], fontsize=8)
+            ax.stackplot(x, *ys.values(), colors=list(PART_COLOURS.values()), edgecolor='white', linewidth=0.5,
+                         labels=[PART_NAMES[part] for part in PART_COLOURS])
+            bands[ax] = (x, ys)
+        ax.set_title(f'{NAMES[construction]} ({sum(y[-1] for y in ys.values()):.1f} MB)', fontsize=8)
         _height_axis(ax)
-    axes[0].set_ylabel('Proof size (MB)')
+    top = axes[0].get_ylim()[1]
+    for ax, (x, ys) in bands.items():  # Each band tall enough for its name gets it, at three quarters of the height.
+        i, base = int(0.75 * (len(x) - 1)), 0.0
+        for part, y in ys.items():
+            if y[i] >= 0.12 * top:
+                ax.text(x[i], base + y[i] / 2, part.replace('Omega', '$\\Omega$'), ha='center', va='center',
+                        fontsize=7, color=PART_INK[part])
+            base += y[i]
+    axes[0].set_ylabel(f'Proof size, $K^\\star$={K} (MB)')
     handles, labels = axes[0].get_legend_handles_labels()
-    fig.legend(handles, labels, loc='outside upper center', ncols=3)
+    fig.legend(handles, labels, loc='outside upper center', ncols=3, handlelength=1.2, columnspacing=0.8)
     path = out / f'proof-sections{"-log" if log else ""}.pdf'
     fig.savefig(path)
     plt.close(fig)
@@ -185,7 +210,9 @@ def numbers(build: list[dict] | None, runs: dict, sections: dict | None) -> dict
         out[f'{construction}-K{K}'] = row
     for r in build or []:
         if r['height'] == max(b['height'] for b in build):
-            out.setdefault(f'{r["construction"]}-K{r["K"]}', {})['build_s'] = r['total_s']
+            row = out.setdefault(f'{r["construction"]}-K{r["K"]}', {})
+            row['build_s'] = r.get('one_pass_s', r['total_s'])  # The one-pass prover, when measured.
+            row['build_levels_then_compress_s'] = r['total_s']
     if sections:
         top = max(r['height'] for r in sections['rows'])
         for r in sections['rows']:
@@ -194,12 +221,14 @@ def numbers(build: list[dict] | None, runs: dict, sections: dict | None) -> dict
     return out
 
 
-def draw_all(results: Path, out: Path) -> list[Path]:
+def draw_all(results: Path, out: Path, timings: Path | None = None) -> list[Path]:
     """Draws every figure the results allow and writes numbers.json.
 
     Args:
         results: Directory of the results (build-time.json, replay-*.json/.npz, sections.json, attack.json).
         out: Directory of the figures.
+        timings: Directory of replays (with or without verifier) and build-time.json measured alone, whose update
+            series and build times replace those of results; the proofs must be the same.
 
     Returns:
         The paths written.
@@ -209,6 +238,14 @@ def draw_all(results: Path, out: Path) -> list[Path]:
     build = _result(results / 'build-time.json') if (results / 'build-time.json').exists() else None
     sections = _result(results / 'sections.json') if (results / 'sections.json').exists() else None
     runs = _replays(results)
+    if timings:
+        if (timings / 'build-time.json').exists():
+            build = _result(timings / 'build-time.json')
+        for key, (_, series) in _replays(timings).items():
+            if key in runs:
+                if not np.array_equal(series['proof_blocks'], runs[key][1]['proof_blocks']):
+                    raise ValueError(f'the replays of {key} do not give the same proofs')
+                runs[key][1]['update_us'] = series['update_us']
     written = []
     if build and runs:
         written.append(time_figure(build, runs, out))
