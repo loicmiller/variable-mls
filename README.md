@@ -1,12 +1,12 @@
-# Mining in Logarithmic Space with Variable Difficulty
+# vmls
 
-NIPoPoWs (Non-Interactive Proofs of Proof-of-Work) for chains whose mining difficulty varies, replayed over the real
-Bitcoin header chain.
+NIPoPoWs (Non-Interactive Proofs of Proof-of-Work) with variable mining difficulty, measured on the Bitcoin header
+chain.
 
 A NIPoPoW keeps a logarithmic number of blocks of a proof-of-work chain, sampled by level, so that a light client can
-compare two chains without downloading them. This repository implements the prover and the verifiers of two
-constructions, replays them over the whole history of Bitcoin, and measures what they cost: proof size, prover and
-verifier time, and the Bitcoin parameters the security proofs assume.
+compare two chains without downloading them. `vmls` (variable-difficulty mining in logarithmic space) implements the
+prover and the verifiers of two constructions, replays them over the whole history of Bitcoin, and measures what they
+cost: proof size, prover and verifier time, and the Bitcoin parameters the security proofs assume.
 
 - **CCS 2025** (`ccs2025`): the construction of the CCS 2025 paper. A block's level compares its hash with its own
   target, and the verifier compares the work of the blocks after the last common block of two proofs.
