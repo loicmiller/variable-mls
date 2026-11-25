@@ -13,8 +13,9 @@ rounds of 18 seconds. A chain yields about one block every 33 rounds, so the has
   interval on gamma(s, w), and a ratio of means never exceeds the ratio of extremes, so the lower bound also bounds the
   gamma of the definition.
 
-Both take `since`, a Unix time: only the blocks found from then on count. The hashrate varied far more in 2009-2012
-than since, so a recent gamma is the one that matters for a proof built today.
+Both take `since`, a Unix time: only the blocks found from then on count, so the classic estimator starts K_SMOOTH
+blocks later, once its smoothing window is full (a week). The hashrate varied far more in 2009-2012 than since, so a
+recent gamma is the one that matters for a proof built today.
 
     result = classic(load_headers('headers/headers.json'))
 """

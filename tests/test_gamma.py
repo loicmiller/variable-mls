@@ -15,8 +15,8 @@ from scipy.stats import binomtest
 from tests.conftest import HEADERS, REFERENCE, require
 from vmls.chain import GENESIS_TARGET, load_headers
 from vmls.encoding import target_to_bits
-from vmls.gamma import (DAY, K_SMOOTH, ROUND_SECONDS, Chain, bound, bracket, cells, classic, difficulty_rounds,
-                        ratio_bounds, smoothed_rounds, windowed)
+from vmls.gamma import (ALPHA, CELLS_PER_W, DAY, K_SMOOTH, ROUND_SECONDS, Chain, attack_windows, bound, bracket, cells,
+                        chain_from_headers, classic, difficulty_rounds, ratio_bounds, smoothed_rounds, windowed)
 
 EPOCH = 2016
 TARGET_SPACING = 600
@@ -196,6 +196,24 @@ def test_exposure_by_hand():
     assert abs(point[0] - 1) < 1e-12
 
 
+def test_chain_from_headers_by_hand():
+    """Difficulty 1 for blocks 0 to 3, then 2; block 3 carries a timestamp earlier than block 2's."""
+    stamps = [0, 1000, 3000, 2500, 4000, 5000, 7000]
+    headers = [{'hash': '00', 'bits': f'{target_to_bits(GENESIS_TARGET // (1 if i < 4 else 2)):08x}', 'time': t}
+               for i, t in enumerate(stamps)]
+    chain, time = chain_from_headers(headers)
+    assert time.tolist() == stamps and chain.times.tolist() == [1000, 2500, 3000, 4000, 5000, 7000]
+
+    def exposure(a: float, b: float) -> float:
+        return float(np.diff(chain.exposure(np.array([a, b], dtype=float)))[0])
+
+    assert exposure(0, 1000) == 0  # Nothing before block 1: the gap after the genesis block is left out.
+    assert exposure(1000, 3000) == pytest.approx(2000)
+    # Difficulty 2 applies from the moment block 3 was found: 3000, the running maximum of the timestamps.
+    assert exposure(3000, 7000) == pytest.approx(4000 / 2) and exposure(2000, 4000) == pytest.approx(1000 + 500)
+    assert chain.count(np.array([1000.0, 1001.0, 3000.0, 7001.0])).tolist() == [0, 1, 2, 6]
+
+
 def test_exposure_keeps_its_precision_over_the_whole_chain():
     # A day at the difficulty of 2026, after years at difficulty 1.
     day_2026 = 1.5e14
@@ -213,6 +231,31 @@ def test_pairs_are_those_a_brute_force_finds():
                 if positions[j] >= positions[i] + w_seconds - 1e-6
                 and positions[j] + w_seconds - positions[i] <= s_rounds * ROUND_SECONDS + 1e-6)
     assert bracket(chain, s_rounds, 1)['pairs'] == brute
+
+
+def test_attack_windows_are_those_a_brute_force_finds():
+    """Every window of s rounds enumerated, with every pair of sub-windows inside it."""
+    chain = _simulate_chain('dip-7', 100, 8)[0]
+    s_rounds, w_days, thresholds = 24_000, 1, {'low': 1.3, 'high': 2.2}
+    t_from, t_to = chain.start + 2.2 * DAY, chain.end - 1.7 * DAY
+    result = attack_windows(chain, s_rounds, w_days, t_from, t_to, thresholds)
+    positions, n, e = cells(chain, w_days * DAY)
+    keep = np.flatnonzero((positions >= t_from) & (positions + w_days * DAY <= t_to))
+    n, e = n[keep], e[keep]
+    width = int((s_rounds * ROUND_SECONDS - w_days * DAY) / (w_days * DAY / CELLS_PER_W))
+    pairs = np.array([(a, b) for a in range(width + 1) for b in range(a + CELLS_PER_W, width + 1)])  # In a window.
+    point_window, upper_window = [], []
+    for first in range(len(n) - width):
+        a, b = first + pairs[:, 0], first + pairs[:, 1]
+        point, low, high = ratio_bounds(n[a], n[b], e[a], e[b], ALPHA / len(pairs))
+        with np.errstate(divide='ignore'):
+            point_window.append(np.nanmax(np.maximum(point, 1 / point), initial=1.0))
+            upper_window.append(np.nanmax(np.maximum(high, 1 / low), initial=1.0))
+    assert result['windows'] == len(point_window) > 300
+    for name, value in thresholds.items():
+        assert result[name]['estimate'] == pytest.approx(np.mean(np.array(point_window) < value))
+        assert result[name]['bound'] == pytest.approx(np.mean(np.array(upper_window) < value))
+    assert 0 < result['high']['estimate'] < 1  # The dip closes some windows to the attack, and not the others.
 
 
 def test_simulated_hashrate_comes_out():
