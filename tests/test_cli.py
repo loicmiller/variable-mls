@@ -3,6 +3,7 @@
 import json
 import random
 
+import numpy as np
 import pytest
 
 from vmls.chain import GENESIS_TARGET
@@ -45,6 +46,14 @@ def test_replay_build_time_sections_and_figures(headers_file, tmp_path):
     assert {'time.pdf', 'proof-blocks.pdf', 'proof-sections.pdf', 'proof-sections-log.pdf', 'numbers.json'} <= names
     numbers = json.loads((tmp_path / 'out' / 'numbers.json').read_text())
     assert numbers['ours-K8']['proof_blocks'] > 0
+    timings = tmp_path / 'timings'  # A replay without the verifier, run alone: its update times replace the first.
+    main(['replay', '--construction', 'ours', '--headers', str(headers_file), '-K', '8', '-k', '6', '-chi', '40',
+          '--no-verifier', '--out-dir', str(timings)])
+    main(['figures', '--results', str(out), '--timings', str(timings), '--out-dir', str(tmp_path / 'out2')])
+    merged = json.loads((tmp_path / 'out2' / 'numbers.json').read_text())
+    alone = np.load(timings / 'replay-ours-up-to-12095-K-8-k-6.npz')['update_us']
+    assert merged['ours-K8']['update_ms_last_epoch'] == pytest.approx(np.median(alone[-2016:]) / 1000)
+    assert merged['ours-K8']['verifier_ms_headers'] == numbers['ours-K8']['verifier_ms_headers']
 
 
 def test_results_are_never_overwritten(headers_file, tmp_path):

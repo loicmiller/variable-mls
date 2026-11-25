@@ -146,7 +146,7 @@ def cmd_attack(args: argparse.Namespace) -> None:
 def cmd_figures(args: argparse.Namespace) -> None:
     """Draws every figure the results directory allows."""
     from vmls import figures
-    for path in figures.draw_all(Path(args.results), Path(args.out_dir)):
+    for path in figures.draw_all(Path(args.results), Path(args.out_dir), Path(args.timings) if args.timings else None):
         print(path)
 
 
@@ -233,6 +233,8 @@ def parser() -> argparse.ArgumentParser:
     p = command('figures', cmd_figures, cmd_figures.__doc__)
     p.add_argument('--results', default='results')
     p.add_argument('--out-dir', default='out')
+    p.add_argument('--timings', help='Directory of replays and build-time run alone, whose timings replace those of '
+                                     '--results (the verifier samples stay those of --results).')
     return top
 
 
