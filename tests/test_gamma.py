@@ -273,6 +273,21 @@ def test_classic_statistics_with_the_classic_tools():
     assert old['max_min'] >= old['q95'] >= 1.0
 
 
+def test_workers_without_fork_give_the_same_results(monkeypatch):
+    """Windows has no fork: spawned workers must compute the same statistics and see the same shared chain."""
+    from vmls import gamma
+    chain, blocks, _, _, _ = _simulate_chain('dip-7', 150, 6)
+    headers = _headers(blocks)
+    forked = classic(headers, s_values=(72_000,))
+    cell = ('all', chain.start, chain.end, 72_000, 1)
+    monkeypatch.setattr(gamma.mp, 'get_all_start_methods', lambda: ['spawn'])
+    assert classic(headers, s_values=(72_000,)) == forked
+    with gamma._pool(2, chain) as pool:
+        spawned = pool.starmap(gamma._bracket_task, [cell])[0]
+    expected = bracket(chain, 72_000, 1, cell[1], cell[2])
+    assert spawned == (None if expected is None else expected | {'period': 'all'})
+
+
 # Regressions on the Bitcoin headers.
 
 @pytest.mark.slow
