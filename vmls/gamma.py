@@ -43,7 +43,19 @@ PERIODS = [('2009-2012', 1, 210_000), ('2012-2016', 210_000, 420_000), ('2016-20
 REQUIREMENT_2 = {'a=0.9, c=1.35': 1.516, 'a=0.99, c=1.05': 2.144, 'a, c -> 1': 2.274}
 ATTACK_S = 105_000  # The window of the zero-difficulty attack, in rounds.
 
-_CHAIN = None  # The chain the bound workers share, set before the pool forks.
+_CHAIN = None  # The chain the bound workers share, set in each worker by _share.
+
+
+def _share(chain: 'Chain | None') -> None:
+    """Sets the chain a worker of _pool reads."""
+    global _CHAIN
+    _CHAIN = chain
+
+
+def _pool(processes: int, chain: 'Chain | None' = None) -> 'mp.pool.Pool':
+    """A pool of workers that share chain: forked where the system allows it, spawned otherwise (Windows)."""
+    method = 'fork' if 'fork' in mp.get_all_start_methods() else 'spawn'
+    return mp.get_context(method).Pool(processes, initializer=_share, initargs=(chain,))
 
 
 # The classic estimator.
@@ -163,7 +175,7 @@ def classic(headers: list[dict], since: int | None = None, s_values: tuple[int, 
     rounds = smoothed_rounds(blocks, K_SMOOTH)
     h = rounds['hashrate'].astype(float)
     h = h[h > 0].reset_index(drop=True)
-    with mp.get_context('fork').Pool(len(s_values)) as pool:
+    with _pool(len(s_values)) as pool:
         rows = pool.starmap(classic_gamma, [(h, s) for s in s_values])
     result = {'n_headers': blocks.attrs['n_headers'], 'since': since, 'from_time': int(blocks['time'].min()),
               'rounds': len(h), 'rows': rows}
@@ -440,8 +452,7 @@ def bound(headers: list[dict], since: int | None = None, workers: int = 16) -> d
         t_to = float(time[-1] if last is None else monotonic[last - 1])
         spans[name] = (t_from, t_to)
         tasks += [(name, t_from, t_to, s, w) for s in S_VALUES for w in W_DAYS if 2 * w * DAY <= s * ROUND_SECONDS]
-    context = mp.get_context('fork')
-    with context.Pool(workers) as pool:
+    with _pool(workers, _CHAIN) as pool:
         rows = [row for row in pool.starmap(_bracket_task, tasks, chunksize=1) if row is not None]
 
     blocks = load_blocks(headers)
@@ -449,7 +460,7 @@ def bound(headers: list[dict], since: int | None = None, workers: int = 16) -> d
     round_spans = {name: (int((a - genesis) // ROUND_SECONDS), int((b - genesis) // ROUND_SECONDS))
                    for name, (a, b) in spans.items()}
     series = {'old': smoothed_rounds(blocks, K_SMOOTH), 'difficulty': difficulty_rounds(blocks)}
-    with context.Pool(min(workers, 8)) as pool:
+    with _pool(min(workers, 8)) as pool:
         old = pool.starmap(_classic_by_period, [(method, rounds, s, round_spans) for method, rounds in series.items()
                                                 for s in S_VALUES], chunksize=1)
 
@@ -457,7 +468,7 @@ def bound(headers: list[dict], since: int | None = None, workers: int = 16) -> d
     attack = {f'w={w}': attack_windows(_CHAIN, ATTACK_S, w, t_from, t_to, REQUIREMENT_2) for w in (1, 3, 7)}
 
     _CHAIN, _ = chain_from_headers(headers, median_time_past=True)
-    with context.Pool(workers) as pool:
+    with _pool(workers, _CHAIN) as pool:
         mtp = [row for row in pool.starmap(_bracket_task, [t for t in tasks if t[0] == reference], chunksize=1) if row]
     key = reference.replace('-', '_')
     return {'n_headers': len(time), 'alpha': ALPHA, 'cells_per_w': CELLS_PER_W, 'spans': spans, 'brackets': rows,
