@@ -36,6 +36,10 @@ at K = 104 and 208, k = 323), and our construction the proofs of the earlier rew
 - `vmls build-time`, `vmls sections` (with `vmls block-sizes`, the full blocks of Omega), `vmls kstar` (the K* the
   security bound asks for on Bitcoin), `vmls attack`, `vmls gamma classic|bound` (with `--since` for a recent
   period), `vmls export`, `vmls utxo`, `vmls figures`.
+- A prover that builds a proof from the headers in one pass (`compress_in_one_pass`): it fills D while it reads the
+  chain and holds O(K) blocks per level; `vmls build-time` times it beside levels-then-Compress and checks that both
+  give the same proof.
+- `vmls figures --timings`: the update and build times of runs made alone replace those of the main results.
 - The figures of the README, drawn from the code by `docs/make_figures.py`.
 - The published figures of the CCS 2025 paper in `paper-figures/ccs-2025/`.
 - Tests: properties of the prover on hundreds of synthetic chains, every tampering the verifier must catch, the
