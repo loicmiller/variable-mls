@@ -36,24 +36,33 @@ def test_replay_build_time_sections_and_figures(headers_file, tmp_path):
           '--out', str(out / 'build-time.json')])
     main(['sections', '--headers', str(headers_file), '-K', '8', '-k', '6', '--step', '4000',
           '--out', str(out / 'sections.json')])
+    main(['verifier', '--headers', str(headers_file), '-K', '8', '-k', '6', '--step', '5000', '--repetitions', '1',
+          '--out', str(out / 'verifier.json')])
     replays = sorted(out.glob('replay-*.json'))
     assert [p.name for p in replays] == ['replay-ccs2025-up-to-12095-K-8-k-6.json', 'replay-ours-up-to-12095-K-8-k-6.json']
-    samples = result(replays[1])
-    assert samples['verifier'] and all(v['winner'] == 1 for v in samples['verifier'] if v['fork'] == 'tip')
+    with pytest.raises(SystemExit, match='never overwritten'):  # Refused before the replay, not after it.
+        main(['replay', '--construction', 'ours', '--headers', str(headers_file), '-K', '8', '-k', '6', '-chi', '40',
+              '--out-dir', str(out)])
+    verifier = result(out / 'verifier.json')
+    assert {(r['construction'], r['height'], r['fork']) for r in verifier} == {
+        (c, h, f) for c in ('ccs2025', 'ours') for h in (5000, 10000, 12095) for f in ('tip', 'deep')}
+    assert all(r['winner'] == 1 and r['branch'] == 'level-0' for r in verifier if r['fork'] == 'tip')
     assert {r['construction'] for r in result(out / 'build-time.json')} == {'ccs2025', 'ours'}
     main(['figures', '--results', str(out), '--out-dir', str(tmp_path / 'out')])
     names = {p.name for p in (tmp_path / 'out').iterdir()}
     assert {'time.pdf', 'proof-blocks.pdf', 'proof-sections.pdf', 'proof-sections-log.pdf', 'numbers.json'} <= names
     numbers = json.loads((tmp_path / 'out' / 'numbers.json').read_text())
     assert numbers['ours-K8']['proof_blocks'] > 0
-    timings = tmp_path / 'timings'  # A replay without the verifier, run alone: its update times replace the first.
+    assert numbers['ours-K8']['verifier_branches']['tip'] == {'level-0': 3}
+    assert len(numbers['ours-K8']['verifier_ms_headers_tip']) == 2  # At the tip, against each fork.
+    timings = tmp_path / 'timings'  # A replay run alone: its update times replace the first.
     main(['replay', '--construction', 'ours', '--headers', str(headers_file), '-K', '8', '-k', '6', '-chi', '40',
-          '--no-verifier', '--out-dir', str(timings)])
+          '--out-dir', str(timings)])
     main(['figures', '--results', str(out), '--timings', str(timings), '--out-dir', str(tmp_path / 'out2')])
     merged = json.loads((tmp_path / 'out2' / 'numbers.json').read_text())
     alone = np.load(timings / 'replay-ours-up-to-12095-K-8-k-6.npz')['update_us']
     assert merged['ours-K8']['update_ms_last_epoch'] == pytest.approx(np.median(alone[-2016:]) / 1000)
-    assert merged['ours-K8']['verifier_ms_headers'] == numbers['ours-K8']['verifier_ms_headers']
+    assert merged['ours-K8']['verifier_ms_headers_tip'] == numbers['ours-K8']['verifier_ms_headers_tip']
 
 
 def test_results_are_never_overwritten(headers_file, tmp_path):

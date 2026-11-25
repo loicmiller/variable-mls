@@ -13,7 +13,7 @@ import pytest
 from tests.conftest import HEADERS, REFERENCE, require
 from vmls.chain import chain_from_headers, load_headers
 from vmls.encoding import Links, encode, header_size
-from vmls.measure import deep_fork, k_star, tip_fork
+from vmls.measure import deep_fork, k_star, tip_fork, v_by_level
 from vmls.proof import Params, compress, dissolve, proof_level
 from vmls.verify import check, compare_ccs, compare_ours
 
@@ -76,7 +76,7 @@ def test_real_headers_link_every_proof_and_match_the_formula(chains, constructio
     links = Links(chain, construction, k)
     headers = [encode(chain, links, b.height) for b in proof]
     assert [len(h) for h in headers] == [header_size(construction, b.height, k) for b in proof]
-    check(proof, headers, construction, p)
+    check(proof, headers, construction, p, chain[0].hash)
 
 
 def test_committed_levels_are_geometric(chains):
@@ -90,11 +90,12 @@ def test_committed_levels_are_geometric(chains):
 
 
 @pytest.mark.parametrize('construction', ['ccs2025', 'ours'])
-def test_the_honest_proof_beats_both_forks_on_bitcoin(chains, construction):
+def test_the_honest_proof_beats_both_forks_on_bitcoin(headers, chains, construction):
     chain = chains[construction]
     p = Params(208, 6)
     proof = compress(chain, p)
-    compare = (lambda a, b: compare_ccs(a, b, p)) if construction == 'ccs2025' else (lambda a, b: compare_ours(a, b, p, 33.0))
+    v = v_by_level(headers, p.K)
+    compare = (lambda a, b: compare_ccs(a, b, p)) if construction == 'ccs2025' else (lambda a, b: compare_ours(a, b, p, v))
     assert compare(proof, tip_fork(chain, proof, p, construction)[1])[0] == 1
     winner, branch = compare(proof, deep_fork(chain, len(chain) - 1, p, construction)[1])
     assert winner == 1 or (construction == 'ours' and branch == 'online')

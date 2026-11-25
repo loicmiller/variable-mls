@@ -1,48 +1,59 @@
 """The verifier: checking a proof, then comparing two (Algorithms 2 and 3 of the papers).
 
-check reads the headers of a proof as encoding writes them: it hashes each one, checks the proof of work against the
-target in its bits, checks that each block is linked to the one before it in the proof (by its previous hash, a
-pointer, an interlink or a tuple) and, under ours, that each revealed nonce opens its commitment. check_model does the
-same work by formula, hashing a buffer of the right length, without reading any field: it is what measurements did
-before real headers, kept to compare the two.
+check reads the headers of a proof as encoding writes them: the proof starts at the genesis block the verifier knows;
+each header is hashed and its proof of work checked against the target in its bits; each block is linked to the one
+before it in the proof (by its previous hash in X and Omega, which are contiguous, and in D by its previous hash, a
+pointer, an interlink or a tuple); each level is the one the construction gives, from the hash and the target under
+ccs2025 and from the revealed nonce, which must open its commitment, under ours. check_model does the same work by
+formula, hashing a buffer of the right length, without reading any field: it is what measurements did before real
+headers, kept to compare the two.
 
 The online test of Algorithm 3 waits for blocks to come; the comparisons here stop where it would start and say so.
 
-    winner, branch = compare_ours(proof_1, proof_2, Params(), v=33.0)
+    winner, branch = compare_ours(proof_1, proof_2, Params(), v=[2.4, 2.4, 2.4, 2.6])
 """
 
 import random
 import statistics
+from collections.abc import Sequence
 
-from vmls.chain import Block, bits_to_target, committed_level, sha256, sha256d
+from vmls.chain import Block, bits_to_target, ccs_level, committed_level, sha256, sha256d
 from vmls.encoding import HASH, decode, header_size
 from vmls.proof import Params, split, upward
 
 STAND_IN = random.Random(0).randbytes(20_000)  # Stand-in for header bytes in check_model: only its length matters.
 
 
-def check(proof: list[Block], headers: list[bytes], construction: str, p: Params) -> None:
+def check(proof: list[Block], headers: list[bytes], construction: str, p: Params, genesis: int) -> None:
     """Checks a proof from its headers.
 
     Args:
-        proof: The blocks of the proof, for their hash (exported headers lack the fields it is computed from) and,
-            under ours, their revealed nonce.
+        proof: The blocks of the proof, for their hash (exported headers lack the fields it is computed from), the
+            level they claim and, under ours, their revealed nonce.
         headers: The bytes of each header, as encoding.encode writes them.
         construction: 'ccs2025' or 'ours'.
         p: The parameters.
+        genesis: The hash of the genesis block, which the verifier knows.
 
     Raises:
-        ValueError: If a block misses its target, is not linked to the previous block of the proof, or does not open
-            its commitment.
+        ValueError: If the proof does not start at the genesis block, or if a block misses its target, is not linked
+            to the previous block of the proof, claims a level it does not have or does not open its commitment.
     """
+    if not proof or proof[0].hash != genesis:
+        raise ValueError('the proof does not start at the genesis block')
     revealed = len(proof) - p.k
+    contiguous = len(proof) - p.k - p.chi  # X and Omega start here: each of their blocks follows the one before it.
     for i, (block, data) in enumerate(zip(proof, headers, strict=True)):
         sha256d(data)  # The header id a verifier computes; its value is the block hash here, see the docstring.
         header = decode(data, construction, p.k)
-        if block.hash > bits_to_target(header.bits):
+        target = bits_to_target(header.bits)
+        if block.hash > target:
             raise ValueError(f'block {block.height} misses its target')
-        if i and proof[i - 1].hash.to_bytes(HASH, 'big') not in (header.previous, *header.pointers):
+        previous = proof[i - 1].hash.to_bytes(HASH, 'big') if i else header.previous
+        if previous != header.previous and (i >= contiguous or previous not in header.pointers):
             raise ValueError(f'block {block.height} is not linked to block {proof[i - 1].height}')
+        if construction == 'ccs2025' and i and ccs_level(block.hash, target) != block.level:
+            raise ValueError(f'block {block.height} claims level {block.level}')
         if construction == 'ours' and block.ctr is None and block.height and block.level:
             raise ValueError(f'block {block.height} claims level {block.level} without a revealed nonce')
         if construction == 'ours' and i < revealed and block.height and block.ctr is not None:
@@ -68,6 +79,8 @@ def check_model(proof: list[Block], construction: str, p: Params) -> None:
         sha256d(STAND_IN[:header_size(construction, block.height, p.k)])
         if block.hash > block.target:
             raise ValueError(f'block {block.height} misses its target')
+        if construction == 'ccs2025' and i:
+            ccs_level(block.hash, block.target)
         if construction == 'ours' and i < revealed and block.height and block.ctr is not None:
             sha256(block.ctr)
             committed_level(block.ctr, block.hash)
@@ -157,7 +170,7 @@ def compare_ccs(proof_1: list[Block], proof_2: list[Block], p: Params) -> tuple[
     return (2 if work_2 > work_1 else 1), ('level-0' if mu == 0 else 'level-mu')
 
 
-def compare_ours(proof_1: list[Block], proof_2: list[Block], p: Params, v: float) -> tuple[int | None, str]:
+def compare_ours(proof_1: list[Block], proof_2: list[Block], p: Params, v: Sequence[float]) -> tuple[int | None, str]:
     """Our verifier (Algorithm 3), up to its online test.
 
     The blocks of Omega are not revealed yet, so they have level 0: they count at level 0 and not above.
@@ -166,7 +179,7 @@ def compare_ours(proof_1: list[Block], proof_2: list[Block], p: Params, v: float
         proof_1: The first proof.
         proof_2: The second proof.
         p: The parameters.
-        v: The factor v_mu of Score.
+        v: The factor v_mu of Score for each level mu (measure.v_by_level); the last one serves the levels above.
 
     Returns:
         The winner (1 or 2, None when the online test decides) and the branch: 'level-0', 'score' or 'online'.
@@ -180,5 +193,6 @@ def compare_ours(proof_1: list[Block], proof_2: list[Block], p: Params, v: float
     if mu == 0:
         return (1 if work(row_1 + X_1 + Omega_1) >= work(row_2 + X_2 + Omega_2) else 2), 'level-0'
     if len(row_1) >= p.K and len(row_2) >= p.K:
-        return (1 if score(row_1 + upward(X_1, mu), v) > score(row_2 + upward(X_2, mu), v) else 2), 'score'
+        v_mu = v[min(mu, len(v) - 1)]
+        return (1 if score(row_1 + upward(X_1, mu), v_mu) > score(row_2 + upward(X_2, mu), v_mu) else 2), 'score'
     return None, 'online'

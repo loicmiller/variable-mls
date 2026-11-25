@@ -173,20 +173,3 @@ def decode(data: bytes, construction: str, k: int) -> Header:
         nonces.append((rest[i:i + HASH], rest[i + HASH:i + 2 * HASH]))
     return Header(previous, time, bits, commitment, tuple(pointers), tuple(nonces))
 
-
-def proof_size(proof: list[Block], construction: str, k: int, block_sizes: np.ndarray | None = None) -> dict:
-    """The size of a proof by part: headers of D and X, full blocks of Omega.
-
-    Args:
-        proof: The proof, its last k blocks being Omega and the chi before them X (the caller splits).
-        construction: 'ccs2025' or 'ours'.
-        k: The common prefix parameter.
-        block_sizes: The size of every Bitcoin block by height; Omega counts headers only if None.
-
-    Returns:
-        Bytes of the headers of the proof, and of Omega's full blocks (their 80-byte core counted once).
-    """
-    headers = sum(header_size(construction, b.height, k) for b in proof)
-    omega = proof[-k:] if k else []
-    bodies = sum(int(block_sizes[b.height]) - CORE for b in omega) if block_sizes is not None else 0
-    return {'headers': headers, 'omega_bodies': bodies, 'total': headers + bodies}

@@ -3,8 +3,9 @@
     vmls export --datadir ~/.bitcoin --reference headers/headers.zip      headers of a synced node
     vmls block-sizes --datadir ~/.bitcoin --headers H                    size of every block (stopped node)
     vmls utxo --datadir ~/.bitcoin                                       size of the UTXO set at the tip
-    vmls replay --construction ours --headers H -K 208                   proof grown block by block, verifier
-    vmls build-time --headers H                                          proof built from scratch
+    vmls replay --construction ours --headers H -K 208                   proof grown block by block
+    vmls build-time --headers H                                          proof built from the headers
+    vmls verifier --headers H                                            two proofs checked and compared
     vmls sections --headers H --block-sizes S                            size of D, X and Omega
     vmls gamma classic --headers H --since 2020-01-01                    hashrate fluctuation
     vmls kstar --headers H                                               K* the security bound asks for
@@ -89,9 +90,11 @@ def cmd_replay(args: argparse.Namespace) -> None:
     """Grows a proof over the chain and writes its samples (JSON) and per-block series (NPZ)."""
     from vmls.measure import replay
     p = Params(args.K, args.k, args.chi)
-    samples, series = replay(load_headers(args.headers), args.construction, p, args.v, args.stop,
-                             verifier=not args.no_verifier)
-    stem = Path(args.out_dir) / f'replay-{args.construction}-up-to-{samples["height"]}-K-{p.K}-k-{p.k}'
+    headers = load_headers(args.headers)[:args.stop]
+    stem = Path(args.out_dir) / f'replay-{args.construction}-up-to-{len(headers) - 1}-K-{p.K}-k-{p.k}'
+    if stem.with_suffix('.json').exists():  # Before the run, which takes minutes.
+        sys.exit(f'{stem.with_suffix(".json")} exists: results are never overwritten.')
+    samples, series = replay(headers, args.construction, p)
     write(samples, stem.with_suffix('.json'), args)
     np.savez_compressed(stem.with_suffix('.npz'), **series)
 
@@ -104,7 +107,21 @@ def cmd_build_time(args: argparse.Namespace) -> None:
     for construction in args.construction:
         for K in args.K:
             rows += build_time(headers, construction, Params(K, args.k), heights(len(headers), args.step), args.repetitions)
-            print(f'{construction} K={K}: {rows[-1]["total_s"]:.2f} s at height {rows[-1]["height"]}')
+            print(f'{construction} K={K}: {rows[-1]["one_pass_s"]:.2f} s at height {rows[-1]["height"]}')
+    write(rows, Path(args.out), args)
+
+
+def cmd_verifier(args: argparse.Namespace) -> None:
+    """Times the verifier at several heights, against a fork near the tip and a fork deep in the chain."""
+    from vmls.measure import verifier
+    headers = load_headers(args.headers)
+    rows = []
+    for construction in args.construction:
+        rows += verifier(headers, construction, args.K, args.k, heights(len(headers), args.step), args.v,
+                         args.repetitions)
+        for row in rows[-2:]:
+            print(f'{construction} K={row["K"]}, {row["fork"]} fork at height {row["height"]}: '
+                  f'{row["ms_headers"]:.1f} ms, {row["branch"]}')
     write(rows, Path(args.out), args)
 
 
@@ -193,9 +210,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument('--construction', choices=CONSTRUCTIONS, required=True)
     p.add_argument('-K', type=int, default=208, help='Security parameter.')
     p.add_argument('-chi', type=int, default=4032, help='Length of X.')
-    p.add_argument('-v', type=float, default=33.0, help='Factor v_mu of Score.')
     p.add_argument('--stop', type=int, default=None, help='Height to stop before.')
-    p.add_argument('--no-verifier', action='store_true', help='Do not time the verifier.')
     p.add_argument('--out-dir', default='results')
 
     p = command('build-time', cmd_build_time, cmd_build_time.__doc__)
@@ -203,6 +218,14 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument('--step', type=int, default=50_000, help='Blocks between two heights.')
     p.add_argument('--repetitions', type=int, default=5)
     p.add_argument('--out', default='results/build-time.json')
+
+    p = command('verifier', cmd_verifier, cmd_verifier.__doc__)
+    chain_options(p, many=True)
+    p.add_argument('--step', type=int, default=8 * 2016, help='Blocks between two heights.')
+    p.add_argument('-v', type=float, default=None, help='A constant factor v_mu of Score, instead of the one of each '
+                                                        'level by the formula of Algorithm 4.')
+    p.add_argument('--repetitions', type=int, default=5)
+    p.add_argument('--out', default='results/verifier.json')
 
     p = command('sections', cmd_sections, cmd_sections.__doc__)
     chain_options(p, many=True)
@@ -234,7 +257,7 @@ def parser() -> argparse.ArgumentParser:
     p.add_argument('--results', default='results')
     p.add_argument('--out-dir', default='out')
     p.add_argument('--timings', help='Directory of replays and build-time run alone, whose timings replace those of '
-                                     '--results (the verifier samples stay those of --results).')
+                                     '--results.')
     return top
 
 

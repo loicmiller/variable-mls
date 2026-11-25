@@ -11,6 +11,7 @@ from vmls.verify import (after, check, check_model, compare_ccs, compare_ours, l
                          reveal_coverage, score, work)
 
 P = Params(K=8, k=6, chi=40)
+V = [2.5]  # v_mu at every level: synthetic chains keep one target, so Score caps no honest block.
 
 
 def encoded(chain, proof, construction, p=P):
@@ -29,8 +30,16 @@ def honest(request):
 
 def test_an_honest_proof_passes(honest):
     construction, chain, proof, headers = honest
-    check(proof, headers, construction, P)
+    check(proof, headers, construction, P, chain[0].hash)
     check_model(proof, construction, P)
+
+
+def test_a_proof_that_does_not_start_at_the_genesis_block_is_caught(honest):
+    construction, chain, proof, headers = honest
+    with pytest.raises(ValueError, match='genesis'):
+        check(proof[1:], headers[1:], construction, P, chain[0].hash)
+    with pytest.raises(ValueError, match='genesis'):
+        check(proof, headers, construction, P, chain[1].hash)
 
 
 def test_a_block_missing_its_target_is_caught(honest):
@@ -38,20 +47,18 @@ def test_a_block_missing_its_target_is_caught(honest):
     i = len(proof) // 2
     bad = proof[:i] + [dataclasses.replace(proof[i], hash=proof[i].target + 1)] + proof[i + 1:]
     with pytest.raises(ValueError, match='target'):
-        check(bad, headers, construction, P)
+        check(bad, headers, construction, P, chain[0].hash)
 
 
-def test_blocks_cut_out_of_a_proof_are_caught(honest):
-    """Cutting more than k blocks after a level-0 block leaves the next one pointing to nothing the proof holds.
+def test_a_block_cut_out_of_x_is_caught(honest):
+    """X and Omega are contiguous: a pointer or an interlink that skips a block does not link them.
 
-    Removing a single low block may leave the proof linked through a higher interlink, as for any NIPoPoW.
+    In D, removing a single low block may leave the proof linked through a higher interlink, as for any NIPoPoW.
     """
     construction, chain, proof, headers = honest
-    start = len(proof) - P.k - P.chi
-    i = next(i for i in range(start + 1, len(proof) - 2 * P.k) if proof[i - 1].level == 0)
-    cut = P.k + 1
+    i = len(proof) - P.k - P.chi // 2
     with pytest.raises(ValueError, match='not linked'):
-        check(proof[:i] + proof[i + cut:], headers[:i] + headers[i + cut:], construction, P)
+        check(proof[:i] + proof[i + 1:], headers[:i] + headers[i + 1:], construction, P, chain[0].hash)
 
 
 def test_a_wrong_pointer_is_caught(honest):
@@ -64,7 +71,17 @@ def test_a_wrong_pointer_is_caught(honest):
     else:
         data[80:] = bytes(len(data) - 80)  # The interlink.
     with pytest.raises(ValueError, match='not linked'):
-        check(proof, headers[:i] + [bytes(data)] + headers[i + 1:], construction, P)
+        check(proof, headers[:i] + [bytes(data)] + headers[i + 1:], construction, P, chain[0].hash)
+
+
+def test_a_level_ccs2025_does_not_give_is_caught():
+    chain = random_chain(3000, seed=9)
+    proof = compress(chain, P)
+    headers = encoded(chain, proof, 'ccs2025')
+    i = next(i for i, b in enumerate(proof) if b.height and b.level == 0)
+    bad = proof[:i] + [dataclasses.replace(proof[i], level=5)] + proof[i + 1:]
+    with pytest.raises(ValueError, match='claims level 5'):
+        check(bad, headers, 'ccs2025', P, chain[0].hash)
 
 
 def test_a_nonce_that_does_not_open_its_commitment_is_caught():
@@ -74,7 +91,7 @@ def test_a_nonce_that_does_not_open_its_commitment_is_caught():
     i = 10
     bad = proof[:i] + [dataclasses.replace(proof[i], ctr=bytes(32))] + proof[i + 1:]
     with pytest.raises(ValueError, match='commitment'):
-        check(bad, headers, 'ours', P)
+        check(bad, headers, 'ours', P, chain[0].hash)
 
 
 def test_a_level_claimed_without_its_nonce_is_caught():
@@ -84,7 +101,7 @@ def test_a_level_claimed_without_its_nonce_is_caught():
     i = next(i for i, b in enumerate(proof) if b.height and b.level > 0)
     bad = proof[:i] + [dataclasses.replace(proof[i], ctr=None)] + proof[i + 1:]
     with pytest.raises(ValueError, match='without a revealed nonce'):
-        check(bad, headers, 'ours', P)
+        check(bad, headers, 'ours', P, chain[0].hash)
 
 
 def test_headers_of_another_chain_are_not_linked():
@@ -92,7 +109,7 @@ def test_headers_of_another_chain_are_not_linked():
     proof = compress(a, P)
     links = Links(b, 'ccs2025', P.k)
     with pytest.raises(ValueError, match='not linked'):
-        check(proof, [encode(b, links, block.height) for block in proof], 'ccs2025', P)
+        check(proof, [encode(b, links, block.height) for block in proof], 'ccs2025', P, a[0].hash)
 
 
 def test_reveal_coverage_is_a_share():
@@ -129,7 +146,7 @@ def test_the_honest_proof_beats_weaker_forks(depth):
     """A fork with half the honest blocks loses, at every depth, under both rules (K large enough for the odds)."""
     p = Params(K=32, k=6, chi=40)
     for construction, compare in (('ccs2025', lambda a, b: compare_ccs(a, b, p)),
-                                  ('ours', lambda a, b: compare_ours(a, b, p, v=33.0))):
+                                  ('ours', lambda a, b: compare_ours(a, b, p, V))):
         for seed in range(3):
             chain = random_chain(20_000, seed=depth + seed, construction=construction)
             proof = compress(chain, p)
@@ -144,9 +161,36 @@ def test_branches_of_our_verifier():
     chain = random_chain(8000, seed=10, construction='ours')
     proof = compress(chain, P)
     near = compress(chain[:-3] + make_fork(chain, len(chain) - 4, 2, 1, seed=1, construction='ours'), P)
-    assert compare_ours(proof, near, P, v=33.0) == (1, 'level-0')
+    assert compare_ours(proof, near, P, V) == (1, 'level-0')
     deep = compress(chain[:4000] + make_fork(chain, 3999, 3200, 1, seed=2, construction='ours'), P)
-    assert compare_ours(proof, deep, P, v=33.0)[1] in ('score', 'online')
+    assert compare_ours(proof, deep, P, V)[1] in ('score', 'online')
+
+
+def test_score_decides_against_a_block_of_inflated_difficulty():
+    """A fork with 80 % of the honest blocks, one of them a million times heavier: it holds far more work, and loses.
+
+    The cap of the level decides: with v_mu = 2.5 the heavy block counts for 2.5 blocks, and for all its work with a
+    cap out of reach.
+    """
+    p = Params(K=32, k=6, chi=40)
+    chain = random_chain(20_000, seed=100, construction='ours')
+    proof = compress(chain, p)
+    depth = 6000
+    fork = make_fork(chain, len(chain) - 1 - depth, int(0.8 * depth), 1, seed=0, construction='ours')
+    D_1, _, _ = split(proof, p)
+    D_2, _, _ = split(compress(chain[:len(chain) - depth] + fork, p), p)
+    mu, b = lowest_common_ancestor(D_1, D_2)
+    assert mu > 0 and len(after(D_1[mu], b)) - len(after(D_2[mu], b)) >= 10  # Score decides, with a clear margin.
+    j = next(i for i, x in enumerate(fork) if x.level >= mu and i > 100)
+    heavy = dataclasses.replace(fork[j], target=fork[j].target // 10 ** 6, hash=1)
+    forged = compress(chain[:len(chain) - depth] + fork[:j] + [heavy] + fork[j + 1:], p)
+    D_3, X_3, _ = split(forged, p)
+    assert work(after(D_3[mu], b)) > 1000 * work(after(D_1[mu], b))
+    assert compare_ours(proof, forged, p, V) == (1, 'score')
+    assert compare_ours(proof, forged, p, [1e9]) == (2, 'score')
+    by_level = [1e9] * mu + [2.5]  # The cap of level mu is the one applied, and it serves the levels above.
+    assert compare_ours(proof, forged, p, by_level) == (1, 'score')
+    assert compare_ours(proof, forged, p, [2.5] * mu + [1e9]) == (2, 'score')
 
 
 def zero_difficulty_attack(construction: str, reveal: bool = True):
@@ -179,11 +223,11 @@ def test_the_zero_difficulty_attack_beats_ccs_and_not_ours():
     p, honest, adversarial = zero_difficulty_attack('ccs2025')
     assert compare_ccs(honest, adversarial, p)[0] == 2  # CCS 2025 accepts the forged proof.
     p, honest, adversarial = zero_difficulty_attack('ours')
-    assert compare_ours(honest, adversarial, p, v=33.0)[0] in (1, None)  # Ours rejects it or waits.
+    assert compare_ours(honest, adversarial, p, V)[0] in (1, None)  # Ours rejects it or waits.
 
 
 def test_hiding_nonces_does_not_help_the_adversary():
     p, honest, revealed = zero_difficulty_attack('ours', reveal=True)
     p, honest, hidden = zero_difficulty_attack('ours', reveal=False)
-    assert compare_ours(honest, hidden, p, v=33.0)[0] in (1, None)
-    assert compare_ours(honest, revealed, p, v=33.0)[0] in (1, None)
+    assert compare_ours(honest, hidden, p, V)[0] in (1, None)
+    assert compare_ours(honest, revealed, p, V)[0] in (1, None)

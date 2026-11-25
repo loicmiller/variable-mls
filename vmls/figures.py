@@ -9,6 +9,7 @@ numbers that a text quotes.
     vmls figures --results results --out-dir out
 """
 
+import collections
 import json
 from pathlib import Path
 
@@ -193,21 +194,27 @@ def attack_figure(attack: dict, out: Path) -> Path:
     return path
 
 
-def numbers(build: list[dict] | None, runs: dict, sections: dict | None) -> dict:
-    """The numbers a text quotes: at the tip, build time, update, size by part and verifier, per construction and K."""
+def numbers(build: list[dict] | None, runs: dict, sections: dict | None, verifier: list[dict] | None = None) -> dict:
+    """The numbers a text quotes, per construction and K: at the tip, build time, update, size by part and verifier
+    (against the fork near the tip, then the deep one); over the sampled heights, the branches the verifier took."""
     out = {}
     for (construction, K), (samples, series) in sorted(runs.items()):
         us = series['update_us'].astype(float)
-        row = {'update_ms_last_epoch': float(np.median(us[-EPOCH:]) / 1000), 'proof_blocks': int(series['proof_blocks'][-1])}
-        verifier = samples['verifier']
-        if verifier:
-            row['verifier_ms_headers'] = float(np.median([v['ms_headers'] for v in verifier]))
-            row['verifier_ms_model'] = float(np.median([v['ms_model'] for v in verifier]))
-            row['verifier_ms_headers_tip'] = [v['ms_headers'] for v in verifier if v['height'] == samples['height']]
-            row['branches'] = sorted({v['branch'] for v in verifier})
-            if construction == 'ours':
-                row['reveal_coverage_min'] = min(v['reveal_coverage'] for v in verifier)
-        out[f'{construction}-K{K}'] = row
+        out[f'{construction}-K{K}'] = {'update_ms_last_epoch': float(np.median(us[-EPOCH:]) / 1000),
+                                       'proof_blocks': int(series['proof_blocks'][-1])}
+    by_run = collections.defaultdict(list)
+    for r in verifier or []:
+        by_run[(r['construction'], r['K'])].append(r)
+    for (construction, K), rows in sorted(by_run.items()):
+        tip = [r for r in rows if r['height'] == max(r['height'] for r in rows)]
+        row = out.setdefault(f'{construction}-K{K}', {})
+        row['verifier_ms_headers_tip'] = [r['ms_headers'] for r in tip]
+        row['verifier_ms_model_tip'] = [r['ms_model'] for r in tip]
+        row['verifier_branches'] = {fork: dict(collections.Counter(r['branch'] for r in rows if r['fork'] == fork))
+                                    for fork in ('tip', 'deep')}
+        row['verifier_honest_proof_loses'] = sum(r['winner'] == 2 for r in rows)
+        if construction == 'ours':
+            row['reveal_coverage_min'] = min(r['reveal_coverage'] for r in rows)
     for r in build or []:
         if r['height'] == max(b['height'] for b in build):
             row = out.setdefault(f'{r["construction"]}-K{r["K"]}', {})
@@ -225,10 +232,11 @@ def draw_all(results: Path, out: Path, timings: Path | None = None) -> list[Path
     """Draws every figure the results allow and writes numbers.json.
 
     Args:
-        results: Directory of the results (build-time.json, replay-*.json/.npz, sections.json, attack.json).
+        results: Directory of the results (build-time.json, replay-*.json/.npz, verifier.json, sections.json,
+            attack.json).
         out: Directory of the figures.
-        timings: Directory of replays (with or without verifier) and build-time.json measured alone, whose update
-            series and build times replace those of results; the proofs must be the same.
+        timings: Directory of replays and build-time.json measured alone, whose update series and build times
+            replace those of results; the proofs must be the same.
 
     Returns:
         The paths written.
@@ -237,6 +245,7 @@ def draw_all(results: Path, out: Path, timings: Path | None = None) -> list[Path
     out.mkdir(parents=True, exist_ok=True)
     build = _result(results / 'build-time.json') if (results / 'build-time.json').exists() else None
     sections = _result(results / 'sections.json') if (results / 'sections.json').exists() else None
+    verifier = _result(results / 'verifier.json') if (results / 'verifier.json').exists() else None
     runs = _replays(results)
     if timings:
         if (timings / 'build-time.json').exists():
@@ -256,6 +265,6 @@ def draw_all(results: Path, out: Path, timings: Path | None = None) -> list[Path
     if (results / 'attack.json').exists():
         written.append(attack_figure(_result(results / 'attack.json'), out))
     path = out / 'numbers.json'
-    path.write_text(json.dumps(numbers(build, runs, sections), indent=1))
+    path.write_text(json.dumps(numbers(build, runs, sections, verifier), indent=1))
     written.append(path)
     return written

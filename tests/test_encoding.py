@@ -5,7 +5,7 @@ import random
 import pytest
 
 from vmls.chain import GENESIS_TARGET, bits_to_target, random_chain
-from vmls.encoding import CORE, HASH, Links, decode, encode, header_size, n_levels, proof_size, target_to_bits
+from vmls.encoding import CORE, HASH, Links, decode, encode, header_size, n_levels, target_to_bits
 
 H = lambda block: block.hash.to_bytes(HASH, 'big')  # noqa: E731
 
@@ -78,12 +78,3 @@ def test_ours_fields_point_to_predecessors_and_reveal_only_k_deep_blocks():
         for h, ctr in header.nonces:  # Nothing less than k + 1 deep is revealed.
             if h != bytes(HASH):
                 assert next(b for b in chain if H(b) == h).height < height - k
-
-
-def test_proof_size_counts_omegas_full_blocks_once():
-    chain = random_chain(100, seed=5)
-    sizes = [1000 + i for i in range(100)]
-    size = proof_size(chain[-10:], 'ccs2025', 6, block_sizes=sizes)
-    headers = sum(header_size('ccs2025', b.height, 6) for b in chain[-10:])
-    assert size == {'headers': headers, 'omega_bodies': sum(s - 80 for s in sizes[-6:]), 'total': size['total']}
-    assert size['total'] == headers + size['omega_bodies']
