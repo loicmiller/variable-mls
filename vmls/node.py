@@ -180,10 +180,12 @@ def utxo_set(node: Node) -> dict:
         node: The node.
 
     Returns:
-        Height, number of unspent outputs and serialized size in bytes.
+        Height, number of unspent outputs, and two sizes in bytes: bogosize, Bitcoin Core's own database-independent
+        estimate, and disk_size, what the set takes on the node's disk (None when the node answers from an index).
     """
-    info = node.call('gettxoutsetinfo')
-    return {'height': info['height'], 'outputs': info['txouts'], 'bytes': info['bogosize']}
+    info = node.call('gettxoutsetinfo', 'none')  # Without the hash of the set, which nothing here uses.
+    return {'height': info['height'], 'outputs': info['txouts'], 'bogosize': info['bogosize'],
+            'disk_size': info.get('disk_size')}
 
 
 def scan_block_file(path: Path, key: bytes) -> list[tuple[str, int]]:

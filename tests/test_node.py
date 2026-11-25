@@ -63,6 +63,17 @@ def test_block_files_are_read_with_their_xor_key(tmp_path):
     assert block_sizes(tmp_path, headers, threads=2).tolist() == [200, 380, 170, -1]
 
 
+def test_utxo_set_names_its_two_sizes():
+    from vmls.node import utxo_set
+
+    class Node:
+        def call(self, method, *params):
+            assert (method, params) == ('gettxoutsetinfo', ('none',))
+            return {'height': 5, 'txouts': 7, 'bogosize': 11, 'disk_size': 13, 'total_amount': 1.0}
+
+    assert utxo_set(Node()) == {'height': 5, 'outputs': 7, 'bogosize': 11, 'disk_size': 13}
+
+
 class FakeNode:
     """A node that answers from a list of headers, as Bitcoin Core's RPC does."""
 
