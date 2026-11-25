@@ -5,7 +5,7 @@ import random
 import pytest
 
 from vmls.chain import GENESIS_LEVEL, random_chain, scripted_chain
-from vmls.proof import Params, compress, dissolve, proof_level, upward
+from vmls.proof import Params, compress, compress_in_one_pass, dissolve, proof_level, upward
 
 SMALL = Params(K=4, k=3, chi=8)
 
@@ -77,6 +77,23 @@ def test_updating_a_proof_block_by_block_equals_compressing_the_chain(constructi
         for block in chain:
             proof = compress(proof + [block], SMALL)
             assert proof == compress(chain[:block.height + 1], SMALL)
+
+
+@pytest.mark.parametrize('construction', ['ccs2025', 'ours'])
+@pytest.mark.parametrize('p', [SMALL, Params(K=2, k=1, chi=0), Params(K=1, k=0, chi=3), Params(K=6, k=2, chi=5)])
+def test_one_pass_equals_compress(construction, p):
+    """Filling D while reading the chain once gives the proof of Compress, whatever the length and the parameters."""
+    for chain in chains(150, construction):
+        assert compress_in_one_pass(iter(chain), p) == compress(chain, p), len(chain)
+    for n in range(12):
+        chain = random_chain(n + 1, seed=n, construction=construction) if n else []
+        assert compress_in_one_pass(chain, p) == compress(chain, p), n
+
+
+def test_one_pass_drops_what_no_row_needs():
+    chain = random_chain(60_000, seed=12)
+    p = Params(K=20, k=6, chi=100)
+    assert compress_in_one_pass(chain, p) == compress(chain, p)  # Rows of 8K blocks are pruned many times here.
 
 
 def test_bitcoin_sized_parameters_on_a_long_chain():

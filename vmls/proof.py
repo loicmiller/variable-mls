@@ -8,10 +8,15 @@ A proof keeps three parts of a chain C:
   below, the last 2K mu-blocks and every mu-block after the K-th last (mu+1)-block.
 
 A proof is itself a chain, so Compress applies to a proof extended by new blocks: that is how a prover updates it.
+A prover that starts from the headers can instead fill D while it computes the levels, in one pass over the chain
+(compress_in_one_pass): the same proof, without holding the chain.
 
     proof = compress(chain, Params(K=208, k=6))
 """
 
+import bisect
+import collections
+from collections.abc import Iterable
 from dataclasses import dataclass
 
 from vmls.chain import Block
@@ -113,6 +118,50 @@ def compress(chain: list[Block], p: Params) -> list[Block]:
         The proof.
     """
     D, _, x, omega = dissolve(chain, p)
+    kept = {block.height: block for row in D.values() for block in row}
+    return [kept[height] for height in sorted(kept)] + x + omega
+
+
+def compress_in_one_pass(blocks: Iterable[Block], p: Params) -> list[Block]:
+    """The proof of a chain read once, from the genesis block, each block with its level: compress(chain, p).
+
+    The last chi + k blocks wait in X and Omega; a block that leaves them enters C' and the rows of its levels. Since
+    the counts of mu-blocks only grow, once level mu + 1 holds 2K blocks, level mu is below the proof level for good,
+    and its row needs nothing before the K-th last (mu+1)-block (b† of Algorithm 1) and the 2K-th last mu-block: the
+    rest is dropped, so the prover holds O(K) blocks per level.
+
+    Args:
+        blocks: The blocks of the chain in height order, levels computed.
+        p: The parameters.
+
+    Returns:
+        The proof, as compress returns it.
+    """
+    tail = collections.deque()
+    rows, counts = [], []  # The mu-blocks of C' still needed, and how many C' holds, by level mu.
+    for block in blocks:
+        tail.append(block)
+        if len(tail) <= p.chi + p.k:
+            continue
+        b = tail.popleft()
+        while len(rows) <= b.level:
+            rows.append([])
+            counts.append(0)
+        for mu in range(b.level + 1):
+            rows[mu].append(b)
+            counts[mu] += 1
+        for mu in range(b.level):  # b is a (mu+1)-block: b† of level mu moved.
+            if counts[mu + 1] >= 2 * p.K and len(rows[mu]) > 8 * p.K:  # Drop in batches, O(1) per block.
+                start = bisect.bisect_left(rows[mu], rows[mu + 1][-p.K].height, key=lambda x: x.height)
+                del rows[mu][:min(start, len(rows[mu]) - 2 * p.K)]
+    tail = list(tail)
+    x, omega = tail[:max(len(tail) - p.k, 0)], tail[max(len(tail) - p.k, 0):]
+    if not counts or counts[0] < 2 * p.K:
+        return (rows[0] if rows else []) + x + omega
+    level = max(mu for mu, count in enumerate(counts) if count >= 2 * p.K)
+    D = {level: rows[level]}
+    for mu in range(level - 1, -1, -1):
+        D[mu] = _row(rows[mu], mu, 2 * p.K, D[mu + 1][-p.K])
     kept = {block.height: block for row in D.values() for block in row}
     return [kept[height] for height in sorted(kept)] + x + omega
 
