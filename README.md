@@ -80,8 +80,9 @@ can check that each proof is linked.
 ```bash
 vmls export --datadir ~/.bitcoin --reference headers/headers.zip       # headers of a synced node -> headers/
 vmls block-sizes --datadir ~/.bitcoin --headers H                      # size of every block (stopped node)
-vmls replay --construction ours --headers H -K 208                     # proof grown block by block, verifier
-vmls build-time --headers H                                            # proof built from scratch, by height
+vmls replay --construction ours --headers H -K 208                     # proof grown block by block
+vmls build-time --headers H                                            # proof built from the headers, by height
+vmls verifier --headers H                                              # two proofs checked and compared, by height
 vmls sections --headers H --block-sizes results/block-sizes.npy        # size of D, X and Omega, by height
 vmls gamma classic --headers H --since 2020-01-01                      # hashrate fluctuation, recent period
 vmls kstar --headers H                                                 # K* the security bound asks for
@@ -92,6 +93,12 @@ vmls figures --results results --out-dir out                           # every f
 `H` is a headers file (`.json`, `.json.xz`, or the `.zip` of this repository). Each result is a JSON file holding the
 command, the version and the date, and it is never overwritten; `vmls replay` also writes the per-block series as NPZ.
 The constructions default to both, K to {104, 208, 416} and k to 6. Timings run on one thread.
+
+The provers hash every header they read. The verifier checks that a proof starts at the genesis block, that each block
+meets its target and is linked to the one before it (X and Ω are contiguous), and that each level is the one the
+construction gives; it then compares two proofs, the honest one against a fork near the tip and a fork a quarter of
+the chain back. Score takes its factor v_μ, level by level, from the formula of the paper, γ_μ θ / (η (1 − θ f)), with
+γ_μ, η and θ measured on the headers since 2020 (`vmls.measure.v_by_level`); `vmls verifier -v` sets a constant instead.
 
 ## Comparing with CCS 2025
 

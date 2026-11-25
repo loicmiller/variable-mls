@@ -31,14 +31,17 @@ at K = 104 and 208, k = 323), and our construction the proofs of the earlier rew
 - Real headers (`vmls.encoding`): the bytes of each header, field by field, with the real hashes its pointers
   designate; the verifier reads them and checks that each proof is linked. The size formula is checked against them;
   the earlier byte model counted one pointer too many per header of our construction (32 bytes).
-- `vmls replay`: a proof grown block by block over the whole chain, with the update time, the size of each part and
-  the verifier's time, with real headers and by formula, on forks near the tip and deep in the chain.
+- `vmls replay`: a proof grown block by block over the whole chain, with the update time and the size of each part.
+- `vmls verifier`: the verifier's time at several heights, with real headers and by formula, on forks near the tip
+  and deep in the chain. The verifier checks that a proof starts at the genesis block, that X and Omega are
+  contiguous and that each level is the one the construction gives. Score takes v_mu, level by level, from the
+  formula of Algorithm 4, with its parameters measured on the chain since 2020 (`v_by_level`).
 - `vmls build-time`, `vmls sections` (with `vmls block-sizes`, the full blocks of Omega), `vmls kstar` (the K* the
   security bound asks for on Bitcoin), `vmls attack`, `vmls gamma classic|bound` (with `--since` for a recent
   period), `vmls export`, `vmls utxo`, `vmls figures`.
 - A prover that builds a proof from the headers in one pass (`compress_in_one_pass`): it fills D while it reads the
   chain and holds O(K) blocks per level; `vmls build-time` times it beside levels-then-Compress and checks that both
-  give the same proof.
+  give the same proof. Both hash every header, as an update does.
 - `vmls figures --timings`: the update and build times of runs made alone replace those of the main results.
 - The figures of the README, drawn from the code by `docs/make_figures.py`.
 - The published figures of the CCS 2025 paper in `paper-figures/ccs-2025/`.

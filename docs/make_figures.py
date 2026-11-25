@@ -80,7 +80,7 @@ def usage() -> plt.Figure:
     fig, ax = canvas(7.0, 2.6)
     box(ax, 0.1, 1.45, 1.5, 0.9, 'vmls export', 'synced node\n→ headers/*.json')
     box(ax, 0.1, 0.25, 1.5, 0.9, 'vmls block-sizes', 'stopped node\n→ block-sizes.npy')
-    grid = [('replay', 'per block: update,\nsize, verifier', ORANGE), ('build-time', 'from scratch,\nby height', ORANGE),
+    grid = [('replay', 'per block: update,\nsize', ORANGE), ('build-time, verifier', 'by height: prover,\nverifier', ORANGE),
             ('sections', 'D, X, Omega\nby height', ORANGE), ('gamma, kstar, attack', 'Bitcoin\nparameters', LINE)]
     for i, (title, body, colour) in enumerate(grid):
         box(ax, 2.1 + (i % 2) * 1.55, 1.45 - (i // 2) * 1.2, 1.45, 0.9, title, body, colour)
