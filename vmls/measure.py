@@ -14,14 +14,14 @@ import collections
 import math
 import statistics
 import time
-from collections.abc import Callable
+from collections.abc import Callable, Iterator
 
 import numpy as np
 
 from vmls.chain import (GENESIS_LEVEL, Block, bits_to_target, ccs_level, chain_from_headers, committed_level,
                         make_fork, sha256, sha256d, simulated_nonce)
 from vmls.encoding import Links, encode, header_size
-from vmls.proof import Params, compress, dissolve, proof_level
+from vmls.proof import Params, compress, compress_in_one_pass, dissolve, proof_level
 from vmls.verify import check, check_model, compare_ccs, compare_ours, reveal_coverage
 
 EPOCH = 2016  # Blocks between two target recalculations (m).
@@ -194,7 +194,9 @@ def build_time(headers: list[dict], construction: str, p: Params, heights: list[
     """Times a prover that builds a proof from the headers alone, at several heights.
 
     The levels step reads each header (hash and target) and computes its level; under ours it also opens each
-    revealed commitment, two hashes per block. The nonces, which Bitcoin does not carry, are derived outside the timer.
+    revealed commitment, two hashes per block. Compress then runs on the chain. The one-pass prover does both at once,
+    filling D as it reads the headers (compress_in_one_pass). The nonces, which Bitcoin does not carry, are derived
+    outside the timer.
 
     Args:
         headers: The exported headers.
@@ -204,31 +206,34 @@ def build_time(headers: list[dict], construction: str, p: Params, heights: list[
         repetitions: Runs per timing.
 
     Returns:
-        One row per height: seconds for levels, for Compress and in total, and the proof length.
+        One row per height: seconds for levels, for Compress, for both, and for the one-pass prover; the proof length.
     """
     nonces = [simulated_nonce(int(h['hash'], 16)) for h in headers] if construction == 'ours' else None
     commitments = [sha256(c) for c in nonces] if nonces else None
 
-    def levels(height: int) -> list[Block]:
-        chain = []
+    def annotated(height: int) -> Iterator[Block]:
         for i, h in enumerate(headers[:height + 1]):
             block_hash, target = int(h['hash'], 16), bits_to_target(h['bits'])
-            if construction == 'ccs2025':
-                chain.append(Block(i, block_hash, target, h['time'], ccs_level(block_hash, target)))
+            if i == 0:
+                yield Block(0, block_hash, target, h['time'], GENESIS_LEVEL)
+            elif construction == 'ccs2025':
+                yield Block(i, block_hash, target, h['time'], ccs_level(block_hash, target))
             else:
                 ctr = nonces[i]
                 if sha256(ctr) != commitments[i]:
                     raise ValueError(f'block {i} does not open its commitment')
-                chain.append(Block(i, block_hash, target, h['time'], committed_level(ctr, block_hash), ctr))
-        chain[0].level, chain[0].ctr = GENESIS_LEVEL, None
-        return chain
+                yield Block(i, block_hash, target, h['time'], committed_level(ctr, block_hash), ctr)
 
     rows = []
     for height in heights:
-        levels_s, chain = timed(lambda: levels(height), repetitions)
+        levels_s, chain = timed(lambda: list(annotated(height)), repetitions)
         compress_s, proof = timed(lambda: compress(chain, p), repetitions)
+        one_pass_s, one_pass = timed(lambda: compress_in_one_pass(annotated(height), p), repetitions)
+        if one_pass != proof:
+            raise AssertionError(f'the one-pass prover differs from Compress at height {height}')
         rows.append({'construction': construction, 'height': height, 'K': p.K, 'k': p.k, 'levels_s': levels_s,
-                     'compress_s': compress_s, 'total_s': levels_s + compress_s, 'proof_blocks': len(proof)})
+                     'compress_s': compress_s, 'total_s': levels_s + compress_s, 'one_pass_s': one_pass_s,
+                     'proof_blocks': len(proof)})
     return rows
 
 
