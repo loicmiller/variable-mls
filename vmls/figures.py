@@ -46,6 +46,14 @@ def _height_axis(ax: plt.Axes) -> None:
     ax.set_axisbelow(True)
 
 
+def _legend(fig: plt.Figure, Ks: list[int]) -> None:
+    """One legend above the figure: a colour per construction, then a line style per K (in grey)."""
+    handles = [plt.Line2D([], [], color=COLOURS[c], label=NAMES[c]) for c in NAMES]
+    handles += [plt.Line2D([], [], color=GRAY, linestyle=K_STYLE[K], linewidth=0.9, label=f'$K^\\star$={K}') for K in Ks]
+    fig.legend(handles=handles, loc='outside upper center', ncols=len(handles), handlelength=1.3,
+               handletextpad=0.4, columnspacing=0.7)
+
+
 def _replays(results: Path) -> dict[tuple[str, int], tuple[dict, dict]]:
     """Every replay of a results directory, by construction and K: its samples and per-block series."""
     runs = {}
@@ -67,26 +75,24 @@ def time_figure(build: list[dict], runs: dict, out: Path) -> Path:
     Returns:
         The path written.
     """
-    fig, (left, right) = plt.subplots(1, 2, figsize=(COLUMN, 1.6), layout='constrained')
+    fig, (left, right) = plt.subplots(1, 2, figsize=(COLUMN, 1.7), layout='constrained')
     for construction in NAMES:
         rows = sorted((r for r in build if r['construction'] == construction and r['K'] == 208), key=lambda r: r['height'])
         if rows:
-            left.plot([r['height'] for r in rows], [r['total_s'] for r in rows], color=COLOURS[construction],
-                      label=NAMES[construction])
+            left.plot([r['height'] for r in rows], [r['total_s'] for r in rows], color=COLOURS[construction])
         for (c, K), (_, series) in sorted(runs.items()):
             if c == construction and K in K_STYLE:
                 us = series['update_us'].astype(float)
                 epochs = len(us) // EPOCH
                 medians = np.median(us[:epochs * EPOCH].reshape(epochs, EPOCH), axis=1) / 1000
-                right.plot(np.arange(epochs) * EPOCH, medians, color=COLOURS[c], linestyle=K_STYLE[K], linewidth=0.9,
-                           label=f'{NAMES[c]}, $K^\\star$={K}')
+                right.plot(np.arange(epochs) * EPOCH, medians, color=COLOURS[c], linestyle=K_STYLE[K], linewidth=0.9)
     left.set_ylabel('Build from scratch (s)')
     right.set_ylabel('Update per block (ms)')
     for ax in (left, right):
         _height_axis(ax)
+        ax.set_xlim(left=0)
         ax.set_ylim(bottom=0)
-    handles, labels = left.get_legend_handles_labels()
-    fig.legend(handles, labels, loc='outside upper center', ncols=2)
+    _legend(fig, sorted({K for _, K in runs if K in K_STYLE}))
     path = out / 'time.pdf'
     fig.savefig(path)
     plt.close(fig)
@@ -97,11 +103,10 @@ def size_figure(runs: dict, out: Path) -> Path:
     """The number of blocks in the proof against the height, for each construction and K."""
     fig, ax = plt.subplots(figsize=(COLUMN, 1.8), layout='constrained')
     for (construction, K), (_, series) in sorted(runs.items()):
-        ax.plot(series['proof_blocks'], color=COLOURS[construction], linestyle=K_STYLE.get(K, '-'), linewidth=0.9,
-                label=f'{NAMES[construction]}, $K^\\star$={K}')
+        ax.plot(series['proof_blocks'], color=COLOURS[construction], linestyle=K_STYLE.get(K, '-'), linewidth=0.9)
     ax.set_ylabel('Blocks in the proof')
     _height_axis(ax)
-    ax.legend(loc='upper left', ncols=2)
+    _legend(fig, sorted({K for _, K in runs if K in K_STYLE}))
     path = out / 'proof-blocks.pdf'
     fig.savefig(path)
     plt.close(fig)
@@ -155,6 +160,7 @@ def attack_figure(attack: dict, out: Path) -> Path:
         p = attack['p'][str(r['level'])] if isinstance(next(iter(attack['p'])), str) else attack['p'][r['level']]
         ax.annotate(f'p = {p:.2g}', (r['height'], r['level']), textcoords='offset points', xytext=(3, -9), fontsize=7)
     ax.set_ylabel('Proof level')
+    ax.yaxis.set_major_locator(matplotlib.ticker.MaxNLocator(integer=True))
     _height_axis(ax)
     path = out / 'attack.pdf'
     fig.savefig(path)
