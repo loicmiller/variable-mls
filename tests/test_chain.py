@@ -43,6 +43,10 @@ def test_ccs_level_matches_its_definition():
         assert block_hash << mu <= target < block_hash << (mu + 1)
 
 
+def test_ccs_level_of_a_zero_hash_is_bounded():
+    assert ccs_level(0, GENESIS_TARGET) == GENESIS_LEVEL
+
+
 def test_committed_levels_are_geometric_and_independent_of_the_hash():
     rng = random.Random(2)
     n = 40_000

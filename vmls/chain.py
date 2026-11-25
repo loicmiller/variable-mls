@@ -83,12 +83,12 @@ def ccs_level(block_hash: int, target: int) -> int:
         target: The target of the block.
 
     Returns:
-        The level.
+        The level, at most GENESIS_LEVEL (a hash of zero satisfies the relation at every level).
     """
     mu = max(target.bit_length() - block_hash.bit_length(), 0)
     while mu > 0 and block_hash << mu > target:
         mu -= 1
-    while block_hash << (mu + 1) <= target:
+    while mu < GENESIS_LEVEL and block_hash << (mu + 1) <= target:
         mu += 1
     return mu
 
